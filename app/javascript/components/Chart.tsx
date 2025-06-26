@@ -15,21 +15,37 @@ type DotProps = {
   fill: string;
 };
 
+type ChartColor = "accent" | "info" | (string & {});
+
 export const Chart = ({
   aspect,
   containerRef,
   tooltipPosition,
   tooltip,
+  color = "accent",
   ...props
 }: {
   aspect?: number;
   containerRef: React.RefObject<HTMLDivElement>;
   tooltipPosition: { left: number; top: number } | null;
   tooltip: React.ReactNode;
+  color?: ChartColor;
 } & React.ComponentPropsWithoutRef<typeof ComposedChart>) => {
   const uid = React.useId();
+
+  // Scope this chart's accent to the chosen color
+  const rootStyle = React.useMemo(() => {
+    if (color && color !== "accent") {
+      return {
+        ["--accent" as any]: `var(--${color})`,
+        ["--contrast-accent" as any]: `var(--contrast-${color})`,
+      } as React.CSSProperties;
+    }
+    return undefined;
+  }, [color]);
+
   return (
-    <section className="chart" aria-describedby={tooltip ? uid : undefined}>
+    <section className="chart" style={rootStyle} aria-describedby={tooltip ? uid : undefined}>
       <div style={{ position: "relative" }}>
         <ResponsiveContainer aspect={aspect ?? 1092 / 450} ref={containerRef}>
           <ComposedChart margin={{ top: 32, right: 0, bottom: 16, left: 0 }} {...props} />
