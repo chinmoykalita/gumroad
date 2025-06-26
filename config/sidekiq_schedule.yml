@@ -10,6 +10,9 @@ renew_custom_domain_ssl_certificates:
 generate_large_sellers_analytics_cache_worker:
   cron: "0 * * * *" # Every hour
   class: GenerateLargeSellersAnalyticsCacheWorker
+generate_large_sellers_churn_analytics_cache_worker:
+  cron: "0 * * * *" # Every hour
+  class: GenerateLargeSellersChurnAnalyticsCacheWorker
 find_subscriptions_with_missing_charge_worker:
   cron: "0 */6 * * *" # Every 6 hours
   class: FindSubscriptionsWithMissingChargeWorker

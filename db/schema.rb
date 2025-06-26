@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_04_25_212934) do
+ActiveRecord::Schema[7.1].define(version: 2025_06_25_205420) do
   create_table "active_storage_attachments", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
     t.string "name", limit: 191, null: false
     t.string "record_type", limit: 191, null: false
@@ -583,6 +583,14 @@ ActiveRecord::Schema[7.1].define(version: 2025_04_25_212934) do
     t.index ["seller_id"], name: "index_community_notification_settings_on_seller_id"
     t.index ["user_id", "seller_id"], name: "index_community_notification_settings_on_user_id_and_seller_id", unique: true
     t.index ["user_id"], name: "index_community_notification_settings_on_user_id"
+  end
+
+  create_table "computed_churn_analytics_days", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
+    t.string "key", null: false
+    t.text "data", size: :medium
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_computed_churn_analytics_days_on_key", unique: true
   end
 
   create_table "computed_sales_analytics_days", id: :integer, charset: "latin1", force: :cascade do |t|
