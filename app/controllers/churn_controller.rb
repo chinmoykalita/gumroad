@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class ChurnController < Sellers::BaseController
   before_action :set_body_id_as_app
   before_action :check_payment_details, only: :index
