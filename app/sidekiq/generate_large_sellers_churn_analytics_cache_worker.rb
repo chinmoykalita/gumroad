@@ -6,8 +6,6 @@ class GenerateLargeSellersChurnAnalyticsCacheWorker
 
   def perform
     User.joins(:large_seller).find_each do |user|
-      next unless user.sales.joins(:subscription).exists?
-
       CreatorAnalytics::ChurnCachingProxy.new(user).generate_cache
     rescue => e
       Bugsnag.notify(e) do |report|
