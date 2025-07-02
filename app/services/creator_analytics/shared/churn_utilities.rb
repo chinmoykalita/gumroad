@@ -50,17 +50,17 @@ module CreatorAnalytics
       # Calculate last period date range based on current period
       def self.calculate_last_period_dates(start_date, end_date, aggregate_by)
         if aggregate_by == "monthly"
+          # For monthly aggregation, work with complete months
+          # Calculate how many months the current period spans
+          months_in_period = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
+
+          # Calculate last period by going back the same number of months
+          last_period_end = start_date.beginning_of_month - 1.day
+          last_period_start = (last_period_end + 1.day - months_in_period.months).beginning_of_month
+        else
           period_length_days = (end_date - start_date).to_i + 1
           last_period_end = start_date - 1.day
           last_period_start = last_period_end - (period_length_days - 1).days
-
-          # For monthly aggregation, adjust start date to beginning of month
-          # This ensures we capture the entire month's data, not just from a specific day
-          last_period_start = last_period_start.beginning_of_month
-        else
-          period_length = (start_date..end_date).to_a.length
-          last_period_end = start_date - 1.day
-          last_period_start = last_period_end - (period_length - 1).days
         end
 
         [last_period_start, last_period_end]
