@@ -41,6 +41,9 @@ export const ChurnChart = ({ data }: { data: ChurnDataPoint[] }) => {
   const { tooltip, containerRef, dotRef, events } = useChartTooltip();
   const tooltipData = tooltip ? data[tooltip.index] : null;
 
+  const maxChurnRate = data.length > 0 ? Math.max(...data.map(d => d.churn_rate)) : 0;
+  const yAxisMax = Math.max(4, Math.ceil(maxChurnRate * 1.2));
+
   return (
     <Chart
       color="info"
@@ -55,7 +58,7 @@ export const ChurnChart = ({ data }: { data: ChurnDataPoint[] }) => {
         {...yAxisProps}
         orientation="left"
         tickFormatter={(value: number) => `${value}%`}
-        domain={[0, 4]}
+        domain={[0, yAxisMax]}
       />
       <YAxis {...yAxisProps} yAxisId="rightPlaceholder" orientation="right" tick={false} width={40} domain={[0, 1]} />
       <Area
