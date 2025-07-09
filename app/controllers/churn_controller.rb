@@ -82,9 +82,8 @@ class ChurnController < Sellers::BaseController
       end
 
       today = Date.current
+      earliest_date = [earliest_date, today].min
       @start_date = start_date.clamp(earliest_date, today)
       @end_date = end_time.clamp(@start_date, today)
     end
-
-
 end

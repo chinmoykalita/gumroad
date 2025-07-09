@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'set'
+require "set"
 
 class CreatorAnalytics::ChurnCachingProxy
   def initialize(user)
@@ -16,6 +16,11 @@ class CreatorAnalytics::ChurnCachingProxy
     dates = requested_dates(start_date, end_date, aggregate_by: aggregate_by)
 
     if use_cache?
+      if aggregate_by == "monthly" && has_partial_months?(start_date, end_date)
+        return fetch_monthly_data_with_partial_month_handling(start_date, end_date, products)
+      end
+
+      # Standard caching flow for daily or complete monthly ranges
       is_filtered_request = products.present? && products.map(&:id).sort != subscription_product_ids
 
       if is_filtered_request
@@ -37,7 +42,6 @@ class CreatorAnalytics::ChurnCachingProxy
     first_sale_created_at = @user.first_sale_created_at_for_analytics
     return if first_sale_created_at.nil?
 
-    # Only generate cache for users with subscriptions
     return unless @user.sales.joins(:subscription).exists?
 
     first_sale_date = first_sale_created_at.in_time_zone(@user.timezone).to_date
@@ -93,18 +97,67 @@ class CreatorAnalytics::ChurnCachingProxy
       @_use_cache = LargeSeller.where(user: @user).exists?
     end
 
+    # Check if the date range includes any partial months
+    def has_partial_months?(start_date, end_date)
+      start_date.day != 1 || end_date != end_date.end_of_month
+    end
+
+    # cache for complete months, real-time for partial months
+    def fetch_monthly_data_with_partial_month_handling(start_date, end_date, products)
+      result_data = {}
+
+      current_date = start_date
+      while current_date <= end_date
+        month_start = current_date.beginning_of_month
+        month_end = current_date.end_of_month
+
+        range_start = [current_date, month_start].max
+        range_end = [end_date, month_end].min
+
+        if range_start == month_start && range_end == month_end
+          month_data = fetch_cached_data_for_complete_month(month_start, products)
+          result_data.merge!(month_data)
+        else
+          # Partial month - real-time computation
+          partial_data = analytics_data(range_start, range_end, aggregate_by: "monthly", products: products)
+          result_data.merge!(partial_data)
+        end
+
+        current_date = month_end + 1.day
+      end
+
+      result_data
+    end
+
+    # Fetch complete month data using existing cache infrastructure
+    # This reuses the standard caching flow including product filtering
+    def fetch_cached_data_for_complete_month(month_start_date, products)
+      is_filtered_request = products.present? && products.map(&:id).sort != subscription_product_ids
+      dates = [month_start_date]
+
+      if is_filtered_request
+        cached_data = fetch_and_filter_cached_data(dates, products, "monthly")
+        return cached_data if cached_data.present?
+
+        # Fall back to real-time if cached product filtering fails
+        analytics_data(month_start_date, month_start_date.end_of_month, aggregate_by: "monthly", products: products)
+      else
+        # Use standard cache flow for all products
+        data_for_dates_hash = fetch_data_for_dates(dates, aggregate_by: "monthly")
+        compiled_data = compile_data_for_dates_and_fill_missing(data_for_dates_hash, aggregate_by: "monthly")
+        merge_churn_data_by_date(compiled_data, dates, aggregate_by: "monthly")
+      end
+    end
+
     # Fetch cached data and filter by products
     def fetch_and_filter_cached_data(dates, products, aggregate_by)
       # For monthly aggregation, fetch cache using the first day of each month
       # return data keyed by the YYYY-MM format
       data_for_dates_hash = fetch_data_for_dates(dates, aggregate_by: aggregate_by)
 
-      # Check if we have complete data with product breakdown
-      # JSON parsing returns string keys
       all_have_product_breakdown = data_for_dates_hash.values.all? do |data|
         if data && data.is_a?(Hash)
-          # Check each date entry in the data hash
-          data.values.all? { |entry| entry.is_a?(Hash) && entry['by_product'] }
+          data.values.all? { |entry| entry.is_a?(Hash) && entry["by_product"] }
         else
           false
         end
@@ -119,9 +172,8 @@ class CreatorAnalytics::ChurnCachingProxy
         next unless cached_metrics
 
         # For monthly data, the structure is { "2025-06" => { metrics } }
-        # Process each date key in the cached data
         cached_metrics.each do |date_key, metrics|
-          next unless metrics && metrics['by_product']
+          next unless metrics && metrics["by_product"]
 
           filtered_metrics = filter_metrics_by_products(metrics, product_ids)
           filtered_data[date_key] = filtered_metrics
@@ -139,11 +191,11 @@ class CreatorAnalytics::ChurnCachingProxy
         active_subscribers: 0
       }
 
-      cached_metrics['by_product'].each do |product_id, product_metrics|
+      cached_metrics["by_product"].each do |product_id, product_metrics|
         if product_ids.include?(product_id.to_i)
-          filtered_metrics[:churned_users] += (product_metrics['churned_users'] || 0)
-          filtered_metrics[:revenue_lost_cents] += (product_metrics['revenue_lost_cents'] || 0)
-          filtered_metrics[:active_subscribers] += (product_metrics['active_subscribers'] || 0)
+          filtered_metrics[:churned_users] += (product_metrics["churned_users"] || 0)
+          filtered_metrics[:revenue_lost_cents] += (product_metrics["revenue_lost_cents"] || 0)
+          filtered_metrics[:active_subscribers] += (product_metrics["active_subscribers"] || 0)
         end
       end
 
@@ -156,7 +208,6 @@ class CreatorAnalytics::ChurnCachingProxy
       filtered_metrics
     end
 
-    # Format date key for consistent date representation
     def format_date_key(date, aggregate_by)
       if aggregate_by == "monthly"
         date.strftime("%Y-%m")
@@ -166,7 +217,6 @@ class CreatorAnalytics::ChurnCachingProxy
     end
 
     # Returns a cache key based on the granularity we are storing.
-    # Simplified to match sales analytics pattern
     def cache_key_for_churn_data(date, aggregate_by: "daily")
       "#{user_cache_key}_churn_by_#{aggregate_by}_for_#{date}"
     end
@@ -185,7 +235,6 @@ class CreatorAnalytics::ChurnCachingProxy
       begin
         version = $redis.get(RedisKey.seller_analytics_cache_version) || 0
       rescue => e
-        # Fallback if Redis is unavailable
         Rails.logger.warn "Redis unavailable for cache version, using default: #{e.message}"
         version = 0
       end
@@ -336,7 +385,7 @@ class CreatorAnalytics::ChurnCachingProxy
 
     def subscription_product_ids
       @subscription_product_ids ||= @user.products_for_creator_analytics
-        .select { |p| p.is_recurring_billing? || p.is_tiered_membership? }
-        .map(&:id).sort
+        .filter_map { |p| p.id if p.is_recurring_billing? || p.is_tiered_membership? }
+        .sort
     end
 end
