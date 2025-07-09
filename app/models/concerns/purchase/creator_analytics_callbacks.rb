@@ -3,7 +3,7 @@
 module Purchase::CreatorAnalyticsCallbacks
   extend ActiveSupport::Concern
 
-    included do
+  included do
     after_commit :update_creator_analytics_cache, on: :update
     after_commit :update_churn_analytics_cache, on: :update
 
@@ -26,7 +26,7 @@ module Purchase::CreatorAnalyticsCallbacks
       subscription_fields = %w[subscription_deactivated_at chargeback_date flags purchase_state stripe_refunded]
       return if !force && !subscription_fields.intersect?(previous_changes.keys)
 
-      cache_date = if previous_changes.key?('subscription_deactivated_at') && subscription_deactivated_at.present?
+      cache_date = if previous_changes.key?("subscription_deactivated_at") && subscription_deactivated_at.present?
         subscription_deactivated_at.in_time_zone(seller.timezone).to_date
       else
         created_at.in_time_zone(seller.timezone).to_date
