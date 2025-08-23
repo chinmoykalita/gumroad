@@ -62,6 +62,8 @@ describe SettingsPresenter do
   end
 
   describe "#main_props" do
+    before { Feature.activate(:product_level_support_emails) }
+
     it "returns correct props" do
       expect(presenter.main_props).to eq(
         settings_pages: presenter.pages,
@@ -86,14 +88,15 @@ describe SettingsPresenter do
           purchasing_power_parity_excluded_product_ids: [product.external_id],
           enable_payment_email: true,
           enable_payment_push_notification: true,
-          enable_recurring_subscription_charge_email: true,
-          enable_recurring_subscription_charge_push_notification: true,
+          enable_recurring_subscription_charge_email: false,
+          enable_recurring_subscription_charge_push_notification: false,
           enable_free_downloads_email: true,
           enable_free_downloads_push_notification: true,
           announcement_notification_enabled: true,
           disable_comments_email: false,
           disable_reviews_email: false,
           show_nsfw_products: false,
+          product_level_support_emails: [],
           seller_refund_policy: {
             enabled: true,
             allowed_refund_periods_in_days: [
@@ -124,6 +127,28 @@ describe SettingsPresenter do
           }
         }
       )
+    end
+
+    context "when support emails exist" do
+      before { product.update!(support_email: "support@example.com") }
+
+      it "includes product_level_support_emails in main_props" do
+        expect(presenter.main_props[:user][:product_level_support_emails]).to contain_exactly(
+          {
+            email: "support@example.com",
+            product_ids: [product.external_id]
+          }
+        )
+      end
+    end
+
+    context "when product_level_support_emails feature is disabled" do
+      before { Feature.deactivate(:product_level_support_emails) }
+      before { product.update!(support_email: "support@example.com") }
+
+      it "returns nil for product_level_support_emails" do
+        expect(presenter.main_props[:user][:product_level_support_emails]).to be_nil
+      end
     end
 
     context "when user has unconfirmed email" do

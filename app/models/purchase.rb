@@ -414,7 +414,7 @@ class Purchase < ApplicationRecord
             :flag_query_mode => :bit_operator,
             check_for_column: false
 
-  attr_accessor :chargeable, :card_data_handling_error, :save_card, :price_range, :friend_actions, :offer_code_name,
+  attr_accessor :chargeable, :card_data_handling_error, :save_card, :price_range, :friend_actions,
                 :discount_code, :url_parameters, :purchaser_plugins, :is_automatic_charge, :sales_tax_country_code_election, :business_vat_id,
                 :save_shipping_address, :flow_of_funds, :prorated_discount_price_cents,
                 :original_variant_attributes, :original_price, :is_updated_original_subscription_purchase,
@@ -692,7 +692,7 @@ class Purchase < ApplicationRecord
       expiry_year: nil
     }
 
-    if options[:query] && options[:query].to_s == card_visual && card_visual.match?(User::EMAIL_REGEX)
+    if options[:query] && options[:query].to_s == card_visual && EmailFormatValidator.valid?(card_visual)
       json[:paypal_email] = card_visual
     end
 
@@ -3599,7 +3599,7 @@ class Purchase < ApplicationRecord
     def must_have_valid_email
       return if email && !email_changed?
 
-      errors.add(:base, "valid email required") if email.blank? || !email.match(User::EMAIL_REGEX)
+      errors.add(:base, "valid email required") unless EmailFormatValidator.valid?(email)
     end
 
     def seller_is_link_user
