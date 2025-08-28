@@ -7,7 +7,7 @@ ruby file: ".ruby-version"
 gem "rails", "7.1.3.4"
 gem "rake", "13.2.1"
 
-group :staging, :production do
+install_if -> { ENV["BUNDLE_GEMS__CONTRIBSYS__COM"] } do
   source "https://gems.contribsys.com/" do
     gem "sidekiq-pro", "~> 7.2"
   end
@@ -145,9 +145,6 @@ gem "private_address_check", "~> 0.5"
 gem "puma", "6.4.2"
 gem "pundit", "~> 2.3"
 gem "public_suffix", "~> 5.0"
-# Rack 3.2+ updates are blocked by
-# https://github.com/antiwork/gumroad/issues/884
-gem "rack", "~> 3.1.0"
 gem "rack-attack", "~> 6.6"
 gem "rack-cors", "~> 2.0"
 gem "rack-mini-profiler", "~> 4.0", require: false
