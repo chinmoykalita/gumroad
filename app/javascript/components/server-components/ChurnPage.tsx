@@ -22,10 +22,21 @@ type Product = {
   unique_permalink: string;
 };
 
-const ChurnPage = ({ products: initialProducts }: { products: Product[] }) => {
+type AggregateOption = {
+  value: "day" | "month";
+  title: string;
+};
+
+const ChurnPage = ({
+  products: initialProducts,
+  aggregate_options,
+}: {
+  products: Product[];
+  aggregate_options: AggregateOption[];
+}) => {
   const dateRange = useAnalyticsDateRange();
   const [products, setProducts] = React.useState(initialProducts.map((p) => ({ ...p, selected: p.alive })));
-  const [aggregateBy, setAggregateBy] = React.useState<"daily" | "monthly">("daily");
+  const [aggregateBy, setAggregateBy] = React.useState<"day" | "month">("day");
 
   const [dataByDate, setDataByDate] = React.useState<ChurnData | null>(null);
 
@@ -88,10 +99,18 @@ const ChurnPage = ({ products: initialProducts }: { products: Product[] }) => {
           <select
             aria-label="Aggregate by"
             value={aggregateBy}
-            onChange={(e) => setAggregateBy(e.target.value === "daily" ? "daily" : "monthly")}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === "day" || value === "month") {
+                setAggregateBy(value);
+              }
+            }}
           >
-            <option value="daily">Daily</option>
-            <option value="monthly">Monthly</option>
+            {aggregate_options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.title}
+              </option>
+            ))}
           </select>
           <ProductsPopover products={products} setProducts={setProducts} />
           <DateRangePicker {...dateRange} />
@@ -121,4 +140,7 @@ const ChurnPage = ({ products: initialProducts }: { products: Product[] }) => {
   );
 };
 
-export default register({ component: ChurnPage, propParser: createCast<{ products: Product[] }>() });
+export default register({
+  component: ChurnPage,
+  propParser: createCast<{ products: Product[]; aggregate_options: AggregateOption[] }>(),
+});

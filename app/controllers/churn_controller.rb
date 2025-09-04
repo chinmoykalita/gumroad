@@ -14,7 +14,7 @@ class ChurnController < Sellers::BaseController
   def data
     authorize :analytics, :index?
 
-    aggregate_by = params[:aggregate_by] == "monthly" ? "monthly" : "daily"
+    aggregate_by = CreatorAnalytics::Churn::AGGREGATE_OPTIONS.key?(params[:aggregate_by]) ? params[:aggregate_by] : CreatorAnalytics::Churn::AGGREGATE_BY_DAY
 
     subscription_products = current_seller.products_for_creator_analytics
                                         .select { |p| p.is_recurring_billing? || p.is_tiered_membership? }
@@ -141,7 +141,7 @@ class ChurnController < Sellers::BaseController
     end
 
     def calculate_last_period_dates(start_date, end_date, aggregate_by)
-      if aggregate_by == "monthly"
+      if aggregate_by == CreatorAnalytics::Churn::AGGREGATE_BY_MONTH
         months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
         last_end = start_date.beginning_of_month - 1.day
         last_start = (last_end + 1.day - months.months).beginning_of_month
@@ -154,7 +154,7 @@ class ChurnController < Sellers::BaseController
     end
 
     def format_dates_for_display(start_date, end_date, aggregate_by)
-      if aggregate_by == "monthly"
+      if aggregate_by == CreatorAnalytics::Churn::AGGREGATE_BY_MONTH
         date_keys = (start_date..end_date).to_a.group_by { |d| d.strftime("%Y-%m") }.keys.sort
         formatted = date_keys.map { |ym| Date.strptime("#{ym}-01", "%Y-%m-%d").strftime("%B %Y") }
       else

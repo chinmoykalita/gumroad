@@ -28,12 +28,12 @@ export type ChurnData = {
 export const fetchChurnData = ({
   startTime,
   endTime,
-  aggregateBy = "daily",
+  aggregateBy = "day",
   productIds,
 }: {
   startTime: string;
   endTime: string;
-  aggregateBy?: "daily" | "monthly";
+  aggregateBy?: "day" | "month";
   productIds?: string[];
 }) => {
   const abort = new AbortController();

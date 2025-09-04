@@ -1,7 +1,23 @@
 # frozen_string_literal: true
 
 class CreatorAnalytics::Churn
-  def initialize(user:, products:, dates:, aggregate_by: "daily")
+  AGGREGATE_BY_DAY = "day"
+  AGGREGATE_BY_MONTH = "month"
+
+  AGGREGATE_OPTIONS = {
+    AGGREGATE_BY_DAY => {
+      title: "Daily",
+      date_format: "yyyy-MM-dd",
+      calendar_interval: "day"
+    },
+    AGGREGATE_BY_MONTH => {
+      title: "Monthly",
+      date_format: "yyyy-MM",
+      calendar_interval: "month"
+    }
+  }.freeze
+
+  def initialize(user:, products:, dates:, aggregate_by: AGGREGATE_BY_DAY)
     @user = user
     @products = products
     @dates = constrain_dates(dates)
@@ -10,8 +26,9 @@ class CreatorAnalytics::Churn
   end
 
   def data
-    calendar_interval = @aggregate_by == "monthly" ? "month" : "day"
-    date_format = @aggregate_by == "monthly" ? "yyyy-MM" : "yyyy-MM-dd"
+    aggregate_config = AGGREGATE_OPTIONS[@aggregate_by]
+    calendar_interval = aggregate_config[:calendar_interval]
+    date_format = aggregate_config[:date_format]
 
     sources = [
       { date: { date_histogram: { time_zone: @user.timezone_formatted_offset, field: "subscription_deactivated_at", calendar_interval: calendar_interval, format: date_format } } }
@@ -70,7 +87,7 @@ class CreatorAnalytics::Churn
     def generate_period_dates
       period_dates = {}
 
-      if @aggregate_by == "monthly"
+      if @aggregate_by == AGGREGATE_BY_MONTH
         @dates.group_by { |date| date.strftime("%Y-%m") }.each do |month_key, month_dates|
           period_dates[month_key] = month_dates.last
         end
@@ -90,7 +107,7 @@ class CreatorAnalytics::Churn
 
       filters_hash = {}
       period_dates.each do |period_key, period_date|
-        start_dt = @aggregate_by == "monthly" ? period_date.beginning_of_month : period_date
+        start_dt = @aggregate_by == AGGREGATE_BY_MONTH ? period_date.beginning_of_month : period_date
 
         filters_hash[period_key] = {
           bool: {

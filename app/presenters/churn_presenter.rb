@@ -7,7 +7,8 @@ class ChurnPresenter
 
   def page_props
     {
-      products: subscription_products.map { product_props(_1) }
+      products: subscription_products.map { product_props(_1) },
+      aggregate_options: aggregate_options_props
     }
   end
 
@@ -20,5 +21,11 @@ class ChurnPresenter
 
     def product_props(product)
       { id: product.external_id, alive: product.alive?, unique_permalink: product.unique_permalink, name: product.name }
+    end
+
+    def aggregate_options_props
+      CreatorAnalytics::Churn::AGGREGATE_OPTIONS.map do |value, config|
+        { value: value, title: config[:title] }
+      end
     end
 end
