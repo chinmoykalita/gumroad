@@ -26,17 +26,17 @@ class ChurnController < Sellers::BaseController
     end
 
     service_data = CreatorAnalytics::Churn.new(
-      user: current_seller,
-      products: products,
+      seller: current_seller,
+      products:,
       dates: (@start_date..@end_date).to_a,
-      aggregate_by: aggregate_by
+      aggregate_by:
     ).data
 
     total_stats = calculate_total_stats_from_data(service_data.values)
 
     data_source = lambda do |start_date, end_date, agg, prods|
       CreatorAnalytics::Churn.new(
-        user: current_seller,
+        seller: current_seller,
         products: (prods.presence || subscription_products),
         dates: (start_date..end_date).to_a,
         aggregate_by: agg

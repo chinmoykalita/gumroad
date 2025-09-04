@@ -17,12 +17,12 @@ class CreatorAnalytics::Churn
     }
   }.freeze
 
-  def initialize(user:, products:, dates:, aggregate_by: AGGREGATE_BY_DAY)
-    @user = user
+  def initialize(seller:, products:, dates:, aggregate_by: AGGREGATE_BY_DAY)
+    @seller = seller
     @products = products
     @dates = constrain_dates(dates)
     @aggregate_by = aggregate_by
-    build_query
+    @query = build_query
   end
 
   def data
@@ -31,7 +31,7 @@ class CreatorAnalytics::Churn
     date_format = aggregate_config[:date_format]
 
     sources = [
-      { date: { date_histogram: { time_zone: @user.timezone_formatted_offset, field: "subscription_deactivated_at", calendar_interval: calendar_interval, format: date_format } } }
+      { date: { date_histogram: { time_zone: @seller.timezone_formatted_offset, field: "subscription_deactivated_at", calendar_interval: calendar_interval, format: date_format } } }
     ]
     churn_data = paginate(sources:).each_with_object({}) do |bucket, result|
       result[bucket["key"]["date"]] = {
@@ -69,13 +69,13 @@ class CreatorAnalytics::Churn
 
   private
     def constrain_dates(dates)
-      today_date = Time.now.in_time_zone(@user.timezone).to_date
+      today_date = Time.now.in_time_zone(@seller.timezone).to_date
 
-      first_sale_created_at = @user.first_sale_created_at_for_analytics
+      first_sale_created_at = @seller.first_sale_created_at_for_analytics
       earliest_meaningful_date = if first_sale_created_at
-        first_sale_created_at.in_time_zone(@user.timezone).to_date
+        first_sale_created_at.in_time_zone(@seller.timezone).to_date
       else
-        @user.created_at.in_time_zone(@user.timezone).to_date
+        @seller.created_at.in_time_zone(@seller.timezone).to_date
       end
 
       constrained_start = dates.first.clamp(earliest_meaningful_date, today_date)
@@ -150,12 +150,14 @@ class CreatorAnalytics::Churn
 
     def build_query
       search_service = PurchaseSearchService.new(Purchase::CHARGED_SALES_SEARCH_OPTIONS)
-      @query = search_service.body[:query]
+      query = search_service.body[:query]
 
-      @query[:bool][:must] << { exists: { field: "subscription_deactivated_at" } }
-      @query[:bool][:must] << { term: { selected_flags: "is_original_subscription_purchase" } }
-      @query[:bool][:filter] << { terms: { product_id: @products.map(&:id) } }
-      @query[:bool][:filter] << { range: { subscription_deactivated_at: { time_zone: @user.timezone_formatted_offset, gte: @dates.first.to_s, lte: @dates.last.to_s } } }
+      query[:bool][:must] << { exists: { field: "subscription_deactivated_at" } }
+      query[:bool][:must] << { term: { selected_flags: "is_original_subscription_purchase" } }
+      query[:bool][:filter] << { terms: { product_id: @products.map(&:id) } }
+      query[:bool][:filter] << { range: { subscription_deactivated_at: { time_zone: @seller.timezone_formatted_offset, gte: @dates.first.to_s, lte: @dates.last.to_s } } }
+
+      query
     end
 
     def paginate(sources:)
