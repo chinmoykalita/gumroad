@@ -17,6 +17,13 @@ class CreatorAnalytics::Churn
     }
   }.freeze
 
+  ZERO_STATS = {
+    churned_users: 0,
+    revenue_lost_cents: 0,
+    churn_rate: 0.0,
+    avg_active_base: 0
+  }.freeze
+
   def initialize(seller:, products:, dates:, aggregate_by: AGGREGATE_BY_DAY)
     @seller = seller
     @products = products
@@ -25,49 +32,42 @@ class CreatorAnalytics::Churn
     @query = build_query
   end
 
+  # Returns complete analytics data ready for JSON response
   def data
-    aggregate_config = AGGREGATE_OPTIONS[@aggregate_by]
-    calendar_interval = aggregate_config[:calendar_interval]
-    date_format = aggregate_config[:date_format]
+    period_data = period_data_with_churn_metrics
 
-    sources = [
-      { date: { date_histogram: { time_zone: @seller.timezone_formatted_offset, field: "subscription_deactivated_at", calendar_interval: calendar_interval, format: date_format } } }
-    ]
-    churn_data = paginate(sources:).each_with_object({}) do |bucket, result|
-      result[bucket["key"]["date"]] = {
-        churned_users: bucket["doc_count"],
-        revenue_lost_cents: bucket["revenue_lost"]["value"].to_i,
-      }
-    end
+    total_stats = calculate_summary_stats(period_data.values)
+    date_keys, formatted_dates = format_dates_for_display
+    by_date_arrays = build_by_date_arrays(date_keys, period_data)
+    last_period_stats = calculate_last_period_stats
 
-    period_dates = generate_period_dates
+    {
+      dates: formatted_dates,
+      start_date: formatted_dates.first,
+      end_date: formatted_dates.last,
+      by_date: by_date_arrays,
+      total: total_stats,
+      last_period: last_period_stats,
+      first_sale_date: format_first_sale_date
+    }
+  end
 
-    active_counts = bulk_active_subscribers
-
-    period_dates.each do |period_key, _period_date|
-      churned_users = churn_data.dig(period_key, :churned_users) || 0
-
-      active_subscribers = active_counts[period_key] || 0
-
-      churn_rate = active_subscribers.positive? ? (churned_users.to_f / active_subscribers * 100).round(2) : 0.0
-
-      if churn_data[period_key]
-        churn_data[period_key][:churn_rate] = churn_rate
-        churn_data[period_key][:active_subscribers] = active_subscribers
-      else
-        churn_data[period_key] = {
-          churned_users: 0,
-          revenue_lost_cents: 0,
-          churn_rate: churn_rate,
-          active_subscribers: active_subscribers
-        }
-      end
-    end
-
-    churn_data
+  # Returns period data with calculated churn metrics - used for last period calculations
+  def period_data_with_churn_metrics
+    raw_data = fetch_raw_churn_data
+    calculate_churn_metrics(raw_data)
   end
 
   private
+    # Memoized helpers to avoid repeated expensive operations
+    def product_ids
+      @product_ids ||= @products.map(&:id)
+    end
+
+    def period_dates
+      @period_dates ||= generate_period_dates
+    end
+
     def constrain_dates(dates)
       today_date = Time.now.in_time_zone(@seller.timezone).to_date
 
@@ -103,8 +103,6 @@ class CreatorAnalytics::Churn
 
     # Returns a hash date_key => active_subscriber_count
     def bulk_active_subscribers
-      period_dates = generate_period_dates
-
       filters_hash = {}
       period_dates.each do |period_key, period_date|
         start_dt = @aggregate_by == AGGREGATE_BY_MONTH ? period_date.beginning_of_month : period_date
@@ -116,7 +114,7 @@ class CreatorAnalytics::Churn
               { term: { selected_flags: "is_original_subscription_purchase" } }
             ],
             filter: [
-              { terms: { product_id: @products.map(&:id) } },
+              { terms: { product_id: product_ids } },
               { range: { created_at: { lt: start_dt.beginning_of_day.iso8601 } } }
             ],
             should: [
@@ -129,7 +127,7 @@ class CreatorAnalytics::Churn
       end
 
       body = {
-        query: { bool: { must: [{ exists: { field: "subscription_id" } }, { term: { selected_flags: "is_original_subscription_purchase" } }], filter: [{ terms: { product_id: @products.map(&:id) } }] } },
+        query: { bool: { must: [{ exists: { field: "subscription_id" } }, { term: { selected_flags: "is_original_subscription_purchase" } }], filter: [{ terms: { product_id: product_ids } }] } },
         size: 0,
         aggs: {
           active_subscribers: {
@@ -154,7 +152,7 @@ class CreatorAnalytics::Churn
 
       query[:bool][:must] << { exists: { field: "subscription_deactivated_at" } }
       query[:bool][:must] << { term: { selected_flags: "is_original_subscription_purchase" } }
-      query[:bool][:filter] << { terms: { product_id: @products.map(&:id) } }
+      query[:bool][:filter] << { terms: { product_id: product_ids } }
       query[:bool][:filter] << { range: { subscription_deactivated_at: { time_zone: @seller.timezone_formatted_offset, gte: @dates.first.to_s, lte: @dates.last.to_s } } }
 
       query
@@ -187,5 +185,133 @@ class CreatorAnalytics::Churn
           },
         },
       }
+    end
+
+    def fetch_raw_churn_data
+      aggregate_config = AGGREGATE_OPTIONS[@aggregate_by]
+      calendar_interval = aggregate_config[:calendar_interval]
+      date_format = aggregate_config[:date_format]
+
+      sources = [
+        { date: { date_histogram: { time_zone: @seller.timezone_formatted_offset, field: "subscription_deactivated_at", calendar_interval: calendar_interval, format: date_format } } }
+      ]
+      paginate(sources:).each_with_object({}) do |bucket, result|
+        result[bucket["key"]["date"]] = {
+          churned_users: bucket["doc_count"],
+          revenue_lost_cents: bucket["revenue_lost"]["value"].to_i,
+        }
+      end
+    end
+
+    # Takes raw churn data and calculates churn rate % and adds active subscriber counts
+    def calculate_churn_metrics(churn_data)
+      active_counts = bulk_active_subscribers
+
+      period_dates.each do |period_key, _period_date|
+        churned_users = churn_data.dig(period_key, :churned_users) || 0
+        active_subscribers = active_counts[period_key] || 0
+        churn_rate = active_subscribers.positive? ? (churned_users.to_f / active_subscribers * 100).round(2) : 0.0
+
+        churn_data[period_key] = (churn_data[period_key] || { churned_users: 0, revenue_lost_cents: 0 }).merge(
+          churn_rate: churn_rate,
+          active_subscribers: active_subscribers
+        )
+      end
+
+      churn_data
+    end
+
+    def calculate_summary_stats(periods_data)
+      return ZERO_STATS if periods_data.empty?
+
+      total_churned = periods_data.sum { |p| p[:churned_users] || 0 }
+      total_revenue_lost = periods_data.sum { |p| p[:revenue_lost_cents] || 0 }
+
+      periods_with_base = periods_data.select { |p| (p[:active_subscribers] || 0) > 0 }
+      avg_churn_rate = if periods_with_base.any?
+        total_weighted = periods_with_base.sum { |p| (p[:churn_rate] || 0) * (p[:active_subscribers] || 0) }
+        base_sum = periods_with_base.sum { |p| p[:active_subscribers] || 0 }
+        (base_sum > 0 ? (total_weighted / base_sum).round(2) : 0.0)
+      else
+        0.0
+      end
+      avg_churn_rate = avg_churn_rate.clamp(0.0, 100.0)
+
+      active_bases = periods_data.map { |p| p[:active_subscribers] || 0 }
+      avg_active_base = active_bases.empty? ? 0 : (active_bases.sum / active_bases.size.to_f)
+
+      {
+        churned_users: total_churned,
+        revenue_lost_cents: total_revenue_lost,
+        churn_rate: avg_churn_rate,
+        avg_active_base: avg_active_base.to_i
+      }
+    end
+
+    def calculate_last_period_stats
+      last_start, last_end = calculate_last_period_dates
+
+      first_sale_created_at = @seller.first_sale_created_at_for_analytics
+      if first_sale_created_at
+        earliest_date = first_sale_created_at.in_time_zone(@seller.timezone).to_date
+        return ZERO_STATS if last_start < earliest_date
+      end
+      return ZERO_STATS if last_start >= last_end
+
+      last_period_service = self.class.new(
+        seller: @seller,
+        products: @products,
+        dates: (last_start..last_end).to_a,
+        aggregate_by: @aggregate_by
+      )
+      last_period_data = last_period_service.period_data_with_churn_metrics
+      calculate_summary_stats(last_period_data.values)
+    end
+
+    def calculate_last_period_dates
+      start_date = @dates.first
+      end_date = @dates.last
+
+      if @aggregate_by == AGGREGATE_BY_MONTH
+        months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
+        last_end = start_date.beginning_of_month - 1.day
+        last_start = (last_end + 1.day - months.months).beginning_of_month
+      else
+        days = (end_date - start_date).to_i + 1
+        last_end = start_date - 1.day
+        last_start = last_end - (days - 1).days
+      end
+      [last_start, last_end]
+    end
+
+    def format_dates_for_display
+      start_date = @dates.first
+      end_date = @dates.last
+
+      if @aggregate_by == AGGREGATE_BY_MONTH
+        date_keys = (start_date..end_date).to_a.group_by { |d| d.strftime("%Y-%m") }.keys.sort
+        formatted = date_keys.map { |ym| Date.strptime("#{ym}-01", "%Y-%m-%d").strftime("%B %Y") }
+      else
+        date_keys = (start_date..end_date).to_a.map(&:to_s)
+        formatted = date_keys.map do |d|
+          date = Date.parse(d)
+          date.strftime("%A, %B #{date.day.ordinalize}")
+        end
+      end
+      [date_keys, formatted]
+    end
+
+    def build_by_date_arrays(date_keys, service_data)
+      {
+        churn_rate: date_keys.map { |key| service_data.dig(key, :churn_rate) || 0.0 },
+        churned_users: date_keys.map { |key| service_data.dig(key, :churned_users) || 0 },
+        revenue_lost_cents: date_keys.map { |key| service_data.dig(key, :revenue_lost_cents) || 0 }
+      }
+    end
+
+    def format_first_sale_date
+      first_sale_created_at = @seller.first_sale_created_at_for_analytics
+      return nil unless first_sale_created_at
+      first_sale_created_at.in_time_zone(@seller.timezone).strftime("%B %d, %Y")
     end
 end
