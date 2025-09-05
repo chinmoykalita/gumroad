@@ -78,8 +78,8 @@ class CreatorAnalytics::Churn
         @seller.created_at.in_time_zone(@seller.timezone).to_date
       end
 
-      constrained_start = dates.first.clamp(earliest_meaningful_date, today_date)
-      constrained_end = dates.last.clamp(constrained_start, today_date)
+      constrained_start = dates.begin.clamp(earliest_meaningful_date, today_date)
+      constrained_end = dates.end.clamp(constrained_start, today_date)
 
       (constrained_start..constrained_end).to_a
     end
@@ -261,7 +261,7 @@ class CreatorAnalytics::Churn
       last_period_service = self.class.new(
         seller: @seller,
         products: @products,
-        dates: (last_start..last_end).to_a,
+        dates: (last_start..last_end),
         aggregate_by: @aggregate_by
       )
       last_period_data = last_period_service.period_data_with_churn_metrics

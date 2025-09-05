@@ -28,7 +28,7 @@ class ChurnController < Sellers::BaseController
     analytics_data = CreatorAnalytics::Churn.new(
       seller: current_seller,
       products:,
-      dates: (@start_date..@end_date).to_a,
+      dates: (@start_date..@end_date),
       aggregate_by:
     ).data
 
@@ -44,7 +44,7 @@ class ChurnController < Sellers::BaseController
       begin
         end_time = Date.parse(strip_timestamp_location(params[:end_time]))
         start_date = Date.parse(strip_timestamp_location(params[:start_time]))
-      rescue StandardError
+      rescue Date::Error
         end_time = Date.current
         start_date = end_time.ago(29.days).to_date
       end
