@@ -17,10 +17,10 @@ class ChurnController < Sellers::BaseController
     aggregate_by = CreatorAnalytics::Churn::AGGREGATE_OPTIONS.key?(params[:aggregate_by]) ? params[:aggregate_by] : CreatorAnalytics::Churn::AGGREGATE_BY_DAY
 
     subscription_products = current_seller.products_for_creator_analytics
-                                        .select { |p| p.is_recurring_billing? || p.is_tiered_membership? }
+                                        .select { it.is_recurring_billing? || it.is_tiered_membership? }
 
     products = if params[:product_ids].present?
-      subscription_products.select { |p| params[:product_ids].include?(p.external_id) }
+      subscription_products.select { params[:product_ids].include?(it.external_id) }
     else
       subscription_products
     end

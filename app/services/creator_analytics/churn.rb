@@ -88,7 +88,7 @@ class CreatorAnalytics::Churn
       period_dates = {}
 
       if @aggregate_by == AGGREGATE_BY_MONTH
-        @dates.group_by { |date| date.strftime("%Y-%m") }.each do |month_key, month_dates|
+        @dates.group_by { it.strftime("%Y-%m") }.each do |month_key, month_dates|
           period_dates[month_key] = month_dates.last
         end
       else
@@ -143,7 +143,7 @@ class CreatorAnalytics::Churn
 
       response = Purchase.search(body).aggregations.active_subscribers.buckets
 
-      response.transform_values { |data| data.unique_subscriptions.value.to_i }
+      response.transform_values { it.unique_subscriptions.value.to_i }
     end
 
     def build_query
@@ -224,20 +224,20 @@ class CreatorAnalytics::Churn
     def calculate_summary_stats(periods_data)
       return ZERO_STATS if periods_data.empty?
 
-      total_churned = periods_data.sum { |p| p[:churned_users] || 0 }
-      total_revenue_lost = periods_data.sum { |p| p[:revenue_lost_cents] || 0 }
+      total_churned = periods_data.sum { it[:churned_users] || 0 }
+      total_revenue_lost = periods_data.sum { it[:revenue_lost_cents] || 0 }
 
-      periods_with_base = periods_data.select { |p| (p[:active_subscribers] || 0) > 0 }
+      periods_with_base = periods_data.select { (it[:active_subscribers] || 0) > 0 }
       avg_churn_rate = if periods_with_base.any?
-        total_weighted = periods_with_base.sum { |p| (p[:churn_rate] || 0) * (p[:active_subscribers] || 0) }
-        base_sum = periods_with_base.sum { |p| p[:active_subscribers] || 0 }
+        total_weighted = periods_with_base.sum { (it[:churn_rate] || 0) * (it[:active_subscribers] || 0) }
+        base_sum = periods_with_base.sum { it[:active_subscribers] || 0 }
         (base_sum > 0 ? (total_weighted / base_sum).round(2) : 0.0)
       else
         0.0
       end
       avg_churn_rate = avg_churn_rate.clamp(0.0, 100.0)
 
-      active_bases = periods_data.map { |p| p[:active_subscribers] || 0 }
+      active_bases = periods_data.map { it[:active_subscribers] || 0 }
       avg_active_base = active_bases.empty? ? 0 : (active_bases.sum / active_bases.size.to_f)
 
       {
@@ -289,8 +289,8 @@ class CreatorAnalytics::Churn
       end_date = @dates.last
 
       if @aggregate_by == AGGREGATE_BY_MONTH
-        date_keys = (start_date..end_date).to_a.group_by { |d| d.strftime("%Y-%m") }.keys.sort
-        formatted = date_keys.map { |ym| Date.strptime("#{ym}-01", "%Y-%m-%d").strftime("%B %Y") }
+        date_keys = (start_date..end_date).to_a.group_by { it.strftime("%Y-%m") }.keys.sort
+        formatted = date_keys.map { Date.strptime("#{it}-01", "%Y-%m-%d").strftime("%B %Y") }
       else
         date_keys = (start_date..end_date).to_a.map(&:to_s)
         formatted = date_keys.map do |d|
@@ -303,9 +303,9 @@ class CreatorAnalytics::Churn
 
     def build_by_date_arrays(date_keys, service_data)
       {
-        churn_rate: date_keys.map { |key| service_data.dig(key, :churn_rate) || 0.0 },
-        churned_users: date_keys.map { |key| service_data.dig(key, :churned_users) || 0 },
-        revenue_lost_cents: date_keys.map { |key| service_data.dig(key, :revenue_lost_cents) || 0 }
+        churn_rate: date_keys.map { service_data.dig(it, :churn_rate) || 0.0 },
+        churned_users: date_keys.map { service_data.dig(it, :churned_users) || 0 },
+        revenue_lost_cents: date_keys.map { service_data.dig(it, :revenue_lost_cents) || 0 }
       }
     end
 
