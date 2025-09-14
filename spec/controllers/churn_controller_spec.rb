@@ -21,6 +21,7 @@ describe ChurnController do
 
   before do
     allow(StripeBalanceEnforcer).to receive(:ensure_sufficient_balance).and_return(true)
+    Feature.activate_user(:churn_analytics, seller)
   end
 
   describe "GET index" do

@@ -8,6 +8,7 @@ describe CreatorAnalytics::Churn do
   before do
     @user = create(:user, timezone: user_timezone, created_at: Date.new(2020, 1, 1))
     @product = create(:membership_product, user: @user)
+    Feature.activate_user(:churn_analytics, @user)
   end
 
   describe "business logic and calculations" do

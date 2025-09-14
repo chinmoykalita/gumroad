@@ -23,6 +23,7 @@ describe "Churn analytics", :js, :sidekiq_inline, :elasticsearch_wait_for_refres
 
     ignore_js_error(/AbortError: Request aborted/)
     allow_any_instance_of(ApplicationController).to receive(:check_payment_details).and_return(true)
+    Feature.activate_user(:churn_analytics, seller)
   end
 
   it_behaves_like "creator dashboard page", "Analytics" do
