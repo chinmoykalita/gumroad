@@ -34,6 +34,7 @@ export type GlobalProps = {
   locale: string;
   feature_flags: {
     require_email_typo_acknowledgment: boolean;
+    churn_analytics: boolean;
   };
 };
 

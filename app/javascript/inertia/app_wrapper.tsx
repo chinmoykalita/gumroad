@@ -4,6 +4,7 @@ import { Nav } from "$app/components/client-components/Nav";
 import { CurrentSellerProvider, parseCurrentSeller } from "$app/components/CurrentSeller";
 import { DesignContextProvider, DesignSettings } from "$app/components/DesignSettings";
 import { DomainSettingsProvider } from "$app/components/DomainSettings";
+import { FeatureFlagsProvider } from "$app/components/FeatureFlags";
 import LoadingSkeleton from "$app/components/LoadingSkeleton";
 import { LoggedInUserProvider, parseLoggedInUser } from "$app/components/LoggedInUser";
 import { SSRLocationProvider } from "$app/components/useOriginalLocation";
@@ -56,6 +57,10 @@ type GlobalProps = {
   };
   href: string;
   locale: string;
+  feature_flags: {
+    require_email_typo_acknowledgment: boolean;
+    churn_analytics: boolean;
+  };
 };
 
 export default function AppWrapper({ children, global }: { children: React.ReactNode; global: GlobalProps }) {
@@ -83,11 +88,13 @@ export default function AppWrapper({ children, global }: { children: React.React
           <LoggedInUserProvider value={parseLoggedInUser(global.logged_in_user)}>
             <CurrentSellerProvider value={parseCurrentSeller(global.current_seller)}>
               <SSRLocationProvider value={global.href}>
-                <div id="inertia-shell" className="override grid h-[100vh] grid-cols-1 grid-rows-1">
-                  <Nav title="Dashboard" />
-                  {isRouteLoading ? <LoadingSkeleton /> : null}
-                  <div className={isRouteLoading ? "hidden" : "overflow-y-scroll"}>{children}</div>
-                </div>
+                <FeatureFlagsProvider value={global.feature_flags}>
+                  <div id="inertia-shell" className="override grid h-[100vh] grid-cols-1 grid-rows-1">
+                    <Nav title="Dashboard" />
+                    {isRouteLoading ? <LoadingSkeleton /> : null}
+                    <div className={isRouteLoading ? "hidden" : "overflow-y-scroll"}>{children}</div>
+                  </div>
+                </FeatureFlagsProvider>
               </SSRLocationProvider>
             </CurrentSellerProvider>
           </LoggedInUserProvider>

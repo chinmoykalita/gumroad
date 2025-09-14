@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { assertDefined } from "$app/utils/assert";
 
+import { useFeatureFlags } from "$app/components/FeatureFlags";
 import { useLoggedInUser } from "$app/components/LoggedInUser";
 
 export const AnalyticsLayout = ({
@@ -15,6 +16,8 @@ export const AnalyticsLayout = ({
 }) => {
   const user = assertDefined(useLoggedInUser());
 
+  const { churn_analytics } = useFeatureFlags();
+
   return (
     <main>
       <header>
@@ -27,9 +30,11 @@ export const AnalyticsLayout = ({
           <a href={Routes.sales_dashboard_path()} role="tab" aria-selected={selectedTab === "sales"}>
             Sales
           </a>
-          <a href={Routes.churn_dashboard_path()} role="tab" aria-selected={selectedTab === "churn"}>
-            Churn
-          </a>
+          {churn_analytics ? (
+            <a href={Routes.churn_dashboard_path()} role="tab" aria-selected={selectedTab === "churn"}>
+              Churn
+            </a>
+          ) : null}
           {user.policies.utm_link.index ? (
             <a href={Routes.utm_links_dashboard_path()} role="tab" aria-selected={selectedTab === "utm_links"}>
               Links

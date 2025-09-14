@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 class ChurnController < Sellers::BaseController
+  before_action { e404 if Feature.inactive?(:churn_analytics, current_seller) }
   before_action :set_body_id_as_app
   before_action :check_payment_details, only: :index
   before_action :set_time_range, only: :data

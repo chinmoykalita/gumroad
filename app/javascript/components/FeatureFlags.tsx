@@ -2,10 +2,12 @@ import * as React from "react";
 
 type FeatureFlags = {
   require_email_typo_acknowledgment: boolean;
+  churn_analytics: boolean;
 };
 
 const FeatureFlagsContext = React.createContext<FeatureFlags>({
   require_email_typo_acknowledgment: false,
+  churn_analytics: false,
 });
 
 export const FeatureFlagsProvider = FeatureFlagsContext.Provider;
