@@ -4,6 +4,8 @@ import { assertDefined } from "$app/utils/assert";
 
 import { useFeatureFlags } from "$app/components/FeatureFlags";
 import { useLoggedInUser } from "$app/components/LoggedInUser";
+import { PageHeader } from "$app/components/ui/PageHeader";
+import { Tabs, Tab } from "$app/components/ui/Tabs";
 
 export const AnalyticsLayout = ({
   selectedTab,
@@ -19,30 +21,28 @@ export const AnalyticsLayout = ({
   const { churn_analytics } = useFeatureFlags();
 
   return (
-    <main>
-      <header>
-        <h1>Analytics</h1>
-        {actions ? <div className="actions">{actions}</div> : null}
-        <div role="tablist">
-          <a href={Routes.audience_dashboard_path()} role="tab" aria-selected={selectedTab === "following"}>
+    <div>
+      <PageHeader title="Analytics" actions={actions}>
+        <Tabs>
+          <Tab href={Routes.audience_dashboard_path()} isSelected={selectedTab === "following"}>
             Following
-          </a>
-          <a href={Routes.sales_dashboard_path()} role="tab" aria-selected={selectedTab === "sales"}>
+          </Tab>
+          <Tab href={Routes.sales_dashboard_path()} isSelected={selectedTab === "sales"}>
             Sales
-          </a>
+          </Tab>
           {churn_analytics ? (
             <a href={Routes.churn_dashboard_path()} role="tab" aria-selected={selectedTab === "churn"}>
               Churn
             </a>
           ) : null}
           {user.policies.utm_link.index ? (
-            <a href={Routes.utm_links_dashboard_path()} role="tab" aria-selected={selectedTab === "utm_links"}>
+            <Tab href={Routes.utm_links_dashboard_path()} isSelected={selectedTab === "utm_links"}>
               Links
-            </a>
+            </Tab>
           ) : null}
-        </div>
-      </header>
+        </Tabs>
+      </PageHeader>
       {children}
-    </main>
+    </div>
   );
 };

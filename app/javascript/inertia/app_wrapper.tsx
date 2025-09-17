@@ -89,10 +89,10 @@ export default function AppWrapper({ children, global }: { children: React.React
             <CurrentSellerProvider value={parseCurrentSeller(global.current_seller)}>
               <SSRLocationProvider value={global.href}>
                 <FeatureFlagsProvider value={global.feature_flags}>
-                  <div id="inertia-shell" className="override grid h-[100vh] grid-cols-1 grid-rows-1">
+                  <div id="inertia-shell" className="flex h-screen flex-col lg:flex-row">
                     <Nav title="Dashboard" />
                     {isRouteLoading ? <LoadingSkeleton /> : null}
-                    <div className={isRouteLoading ? "hidden" : "overflow-y-scroll"}>{children}</div>
+                    <main className={isRouteLoading ? "hidden" : "flex-1 overflow-y-auto"}>{children}</main>
                   </div>
                 </FeatureFlagsProvider>
               </SSRLocationProvider>
