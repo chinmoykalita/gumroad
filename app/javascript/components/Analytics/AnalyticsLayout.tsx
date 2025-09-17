@@ -31,9 +31,9 @@ export const AnalyticsLayout = ({
             Sales
           </Tab>
           {churn_analytics ? (
-            <a href={Routes.churn_dashboard_path()} role="tab" aria-selected={selectedTab === "churn"}>
+            <Tab href={Routes.churn_dashboard_path()} isSelected={selectedTab === "churn"}>
               Churn
-            </a>
+            </Tab>
           ) : null}
           {user.policies.utm_link.index ? (
             <Tab href={Routes.utm_links_dashboard_path()} isSelected={selectedTab === "utm_links"}>

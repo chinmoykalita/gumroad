@@ -98,6 +98,7 @@ const ChurnPage = ({
         <>
           <select
             aria-label="Aggregate by"
+            className="w-auto"
             value={aggregateBy}
             onChange={(e) => {
               const value = e.target.value;
@@ -118,7 +119,7 @@ const ChurnPage = ({
       }
     >
       {hasSelectedProducts ? (
-        <div style={{ display: "grid", gap: "var(--spacer-7)" }}>
+        <div style={{ display: "grid", gap: "var(--spacer-7)" }} className="p-4 md:p-8">
           <ChurnQuickStats total={totals} />
           {chartData.length ? (
             <ChurnChart data={chartData} />
