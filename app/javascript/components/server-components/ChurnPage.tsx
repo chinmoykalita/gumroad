@@ -118,25 +118,17 @@ const ChurnPage = ({
         </>
       }
     >
-      {hasSelectedProducts ? (
-        <div style={{ display: "grid", gap: "var(--spacer-7)" }} className="p-4 md:p-8">
-          <ChurnQuickStats total={totals} />
-          {chartData.length ? (
-            <ChurnChart data={chartData} />
-          ) : (
-            <div className="input">
-              <Progress width="1em" />
-              Loading chart...
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="input" style={{ textAlign: "center", padding: "var(--spacer-7)" }}>
-          <p style={{ color: "var(--muted)", margin: 0 }}>
-            No products selected. Please select at least one product to view churn analytics.
-          </p>
-        </div>
-      )}
+      <div style={{ display: "grid", gap: "var(--spacer-7)" }} className="p-4 md:p-8">
+        <ChurnQuickStats total={totals} />
+        {chartData.length ? (
+          <ChurnChart data={chartData} />
+        ) : (
+          <div className="input">
+            <Progress width="1em" />
+            Loading chart...
+          </div>
+        )}
+      </div>
     </AnalyticsLayout>
   );
 };
