@@ -120,6 +120,19 @@ class CreatorAnalytics::Churn
     end
 
     # Returns a hash date_key => active_subscriber_count
+    # Sample:
+    # - When aggregating by day (AGGREGATE_BY_DAY):
+    #   {
+    #     "2025-06-01" => 120,
+    #     "2025-06-02" => 118,
+    #     "2025-06-03" => 123
+    #   }
+    #
+    # - When aggregating by month (AGGREGATE_BY_MONTH):
+    #   {
+    #     "2025-06" => 120,
+    #     "2025-07" => 135
+    #   }
     def bulk_active_subscribers
       filters_hash = {}
       period_dates.each do |period_key, period_date|
