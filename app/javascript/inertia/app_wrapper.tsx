@@ -48,6 +48,7 @@ type GlobalProps = {
     name: string;
     avatar_url: string;
     has_published_products: boolean;
+    has_subscription_products: boolean;
     subdomain: string;
     is_buyer: boolean;
     time_zone: {
@@ -59,7 +60,7 @@ type GlobalProps = {
   locale: string;
   feature_flags: {
     require_email_typo_acknowledgment: boolean;
-    churn_analytics: boolean;
+    churn_analytics_enabled: boolean;
   };
 };
 

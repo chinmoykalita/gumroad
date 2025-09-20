@@ -7,7 +7,7 @@ class ChurnPresenter
 
   def page_props
     {
-      products: subscription_products.map { product_props(it) },
+      products: subscription_products.map { |product| { id: product.external_id, alive: product.alive?, unique_permalink: product.unique_permalink, name: product.name } },
       aggregate_options: aggregate_options_props
     }
   end
@@ -16,11 +16,7 @@ class ChurnPresenter
     attr_reader :seller
 
     def subscription_products
-      seller.products_for_creator_analytics.select { it.is_recurring_billing? || it.is_tiered_membership? }
-    end
-
-    def product_props(product)
-      { id: product.external_id, alive: product.alive?, unique_permalink: product.unique_permalink, name: product.name }
+      CreatorAnalytics::Churn.new(seller: seller).subscription_products
     end
 
     def aggregate_options_props

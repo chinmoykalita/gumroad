@@ -24,15 +24,35 @@ class CreatorAnalytics::Churn
     avg_active_base: 0
   }.freeze
 
-  def initialize(seller:, products:, dates:, aggregate_by: AGGREGATE_BY_DAY)
+  def initialize(seller:, products: nil, dates: nil, aggregate_by: AGGREGATE_BY_DAY)
     @seller = seller
     @products = products
-    @dates = constrain_dates(dates)
+    @dates = dates ? constrain_dates(dates) : nil
     @aggregate_by = aggregate_by
-    @query = build_query
+    @query = build_query if @products && @dates
   end
 
-  # Returns complete analytics data ready for JSON response
+  def subscription_products
+    @subscription_products ||= @seller
+      .products_for_creator_analytics
+      .select { it.is_recurring_billing? || it.is_tiered_membership? }
+  end
+
+  def generate_data(product_ids:, dates:, aggregate_by: AGGREGATE_BY_DAY)
+    selected_products = if product_ids.blank?
+      []
+    else
+      subscription_products.select { product_ids.include?(it.external_id) }
+    end
+
+    @products = selected_products
+    @dates = constrain_dates(dates)
+    @aggregate_by = AGGREGATE_OPTIONS.key?(aggregate_by) ? aggregate_by : AGGREGATE_BY_DAY
+    @query = build_query
+
+    data
+  end
+
   def data
     period_data = period_data_with_churn_metrics
 
@@ -52,14 +72,12 @@ class CreatorAnalytics::Churn
     }
   end
 
-  # Returns period data with calculated churn metrics - used for last period calculations
   def period_data_with_churn_metrics
     raw_data = fetch_raw_churn_data
     calculate_churn_metrics(raw_data)
   end
 
   private
-    # Memoized helpers to avoid repeated expensive operations
     def product_ids
       @product_ids ||= @products.map(&:id)
     end
