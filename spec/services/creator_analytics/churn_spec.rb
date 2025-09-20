@@ -8,7 +8,21 @@ describe CreatorAnalytics::Churn do
   before do
     @user = create(:user, timezone: user_timezone, created_at: Date.new(2020, 1, 1))
     @product = create(:membership_product, user: @user)
-    Feature.activate_user(:churn_analytics, @user)
+    Feature.activate_user(:churn_analytics_enabled, @user)
+  end
+
+  describe "#subscription_products" do
+    it "returns only recurring billing and tiered membership products" do
+      service = described_class.new(seller: @user)
+
+      recurring = instance_double(Link, is_recurring_billing?: true, is_tiered_membership?: false)
+      membership = instance_double(Link, is_recurring_billing?: false, is_tiered_membership?: true)
+      onetime = instance_double(Link, is_recurring_billing?: false, is_tiered_membership?: false)
+
+      allow(@user).to receive(:products_for_creator_analytics).and_return([recurring, membership, onetime])
+
+      expect(service.subscription_products).to match_array([recurring, membership])
+    end
   end
 
   describe "business logic and calculations" do
@@ -17,7 +31,6 @@ describe CreatorAnalytics::Churn do
 
     context "with real churn scenarios" do
       before do
-        # Create 3 churned subscriptions across different days
         create_subscription!(
           product: subscription_product,
           price_cents: 1000,
@@ -37,7 +50,6 @@ describe CreatorAnalytics::Churn do
           deactivated_time: Time.utc(2021, 1, 6, 12, 0, 0)
         )
 
-        # Create active subscriptions for churn rate calculation
         create_active_subscriptions(subscription_product, count: 10, price_cents: 1000)
         create_active_subscriptions(membership_product, count: 5, price_cents: 1500)
 
@@ -45,16 +57,13 @@ describe CreatorAnalytics::Churn do
       end
 
       it "calculates churn metrics correctly across multiple products" do
-        service = described_class.new(
-          seller: @user,
-          products: [subscription_product, membership_product],
+        service = described_class.new(seller: @user)
+        result = service.generate_data(
+          product_ids: [subscription_product.external_id, membership_product.external_id],
           dates: (Date.new(2021, 1, 1)..Date.new(2021, 1, 10)),
           aggregate_by: "day"
         )
 
-        result = service.data
-
-        # Should have churned users on the specific dates
         expect(result[:by_date][:churned_users]).to include(a_value > 0)
         expect(result[:total][:churned_users]).to eq(3)
         expect(result[:total][:revenue_lost_cents]).to eq(4500) # 1000 + 2000 + 1500
@@ -62,13 +71,11 @@ describe CreatorAnalytics::Churn do
       end
 
       it "handles empty products gracefully" do
-        service = described_class.new(
-          seller: @user,
-          products: [],
+        service = described_class.new(seller: @user)
+        result = service.generate_data(
+          product_ids: [],
           dates: (Date.new(2021, 1, 1)..Date.new(2021, 1, 3))
         )
-
-        result = service.data
         expect(result[:total]).to include(
           churned_users: 0,
           revenue_lost_cents: 0,
@@ -96,14 +103,12 @@ describe CreatorAnalytics::Churn do
       end
 
       it "groups data by month correctly" do
-        service = described_class.new(
-          seller: @user,
-          products: [subscription_product],
+        service = described_class.new(seller: @user)
+        result = service.generate_data(
+          product_ids: [subscription_product.external_id],
           dates: (Date.new(2025, 1, 1)..Date.new(2025, 2, 28)),
           aggregate_by: "month"
         )
-
-        result = service.data
 
         # Should have 2 months of data
         expect(result[:dates].length).to eq(2)
@@ -115,22 +120,17 @@ describe CreatorAnalytics::Churn do
         # Use a range that will be within the seller's created date constraints
         dates = (Date.new(2021, 1, 1)..Date.new(2021, 1, 10))
 
-        daily_service = described_class.new(
-          seller: @user,
-          products: [subscription_product],
+        service = described_class.new(seller: @user)
+        daily_result = service.generate_data(
+          product_ids: [subscription_product.external_id],
           dates: dates,
           aggregate_by: "day"
         )
-
-        monthly_service = described_class.new(
-          seller: @user,
-          products: [subscription_product],
+        monthly_result = service.generate_data(
+          product_ids: [subscription_product.external_id],
           dates: dates,
           aggregate_by: "month"
         )
-
-        daily_result = daily_service.data
-        monthly_result = monthly_service.data
 
         # Both should have same data structure
         expect(daily_result.keys).to eq(monthly_result.keys)
@@ -145,26 +145,16 @@ describe CreatorAnalytics::Churn do
     context "date constraints and edge cases" do
       it "constrains future dates to today" do
         future_dates = (Date.new(2030, 1, 1)..Date.new(2030, 1, 3))
-
-        service = described_class.new(
-          seller: @user,
-          products: [subscription_product],
-          dates: future_dates
-        )
-
+        service = described_class.new(seller: @user)
+        service.generate_data(product_ids: [subscription_product.external_id], dates: future_dates)
         constrained_dates = service.instance_variable_get(:@dates)
         expect(constrained_dates.last).to be <= Date.current
       end
 
       it "constrains early dates to seller creation date" do
         early_dates = (Date.new(2010, 1, 1)..Date.new(2010, 1, 3))
-
-        service = described_class.new(
-          seller: @user,
-          products: [subscription_product],
-          dates: early_dates
-        )
-
+        service = described_class.new(seller: @user)
+        service.generate_data(product_ids: [subscription_product.external_id], dates: early_dates)
         constrained_dates = service.instance_variable_get(:@dates)
         expect(constrained_dates.first).to be >= @user.created_at.to_date
       end
@@ -183,14 +173,12 @@ describe CreatorAnalytics::Churn do
 
         index_model_records(Purchase)
 
-        service = described_class.new(
-          seller: @user,
-          products: [@product],
+        service = described_class.new(seller: @user)
+        result = service.generate_data(
+          product_ids: [@product.external_id],
           dates: (Date.new(2021, 1, 1) .. Date.new(2021, 1, 3)),
           aggregate_by: "day"
         )
-
-        result = service.data
 
         # Check the structured data format
         expect(result).to include(:dates, :by_date, :total, :last_period)
@@ -215,14 +203,12 @@ describe CreatorAnalytics::Churn do
         allow_any_instance_of(described_class).to receive(:bulk_active_subscribers).and_return({})
         expect(Purchase).to receive(:search).once.and_call_original
 
-        service = described_class.new(
-          seller: @user,
-          products: [@product],
+        service = described_class.new(seller: @user)
+        result = service.generate_data(
+          product_ids: [@product.external_id],
           dates: (Date.new(2021, 1, 1) .. Date.new(2021, 1, 3)),
           aggregate_by: "day"
         )
-
-        result = service.data
         expect(result[:total][:churned_users]).to eq(1)
         expect(result[:total][:revenue_lost_cents]).to eq(1000)
       end
@@ -235,14 +221,12 @@ describe CreatorAnalytics::Churn do
 
         index_model_records(Purchase)
 
-        service = described_class.new(
-          seller: @user,
-          products: [@product],
+        service = described_class.new(seller: @user)
+        result = service.generate_data(
+          product_ids: [@product.external_id],
           dates: (Date.new(2025, 5, 1) .. Date.new(2025, 6, 30)),
           aggregate_by: "month"
         )
-
-        result = service.data
         expect(result[:total][:churned_users]).to eq(2)
         expect(result[:total][:revenue_lost_cents]).to eq(3000) # 1000 + 2000
       end
@@ -260,14 +244,12 @@ describe CreatorAnalytics::Churn do
         allow_any_instance_of(described_class).to receive(:bulk_active_subscribers).and_return({})
         allow(Purchase).to receive(:search).and_call_original
 
-        service = described_class.new(
-          seller: @user,
-          products: [@product],
+        service = described_class.new(seller: @user)
+        result = service.generate_data(
+          product_ids: [@product.external_id],
           dates: (Date.new(2025, 6, 14) .. Date.new(2025, 6, 16)),
           aggregate_by: "day"
         )
-
-        result = service.data
         expect(result[:total][:churned_users]).to eq(3)
         expect(result[:total][:revenue_lost_cents]).to eq(6000) # 1000 + 2000 + 3000
         expect(Purchase).to have_received(:search).at_least(2).times
@@ -289,14 +271,12 @@ describe CreatorAnalytics::Churn do
 
         allow_any_instance_of(described_class).to receive(:bulk_active_subscribers).and_return({})
 
-        service = described_class.new(
-          seller: @user,
-          products: [@product],
+        service = described_class.new(seller: @user)
+        result = service.generate_data(
+          product_ids: [@product.external_id],
           dates: (Date.new(2020, 12, 31) .. Date.new(2021, 1, 1)),
           aggregate_by: "day"
         )
-
-        result = service.data
         expect(result[:total][:churned_users]).to eq(1)
         expect(result[:total][:revenue_lost_cents]).to eq(1000)
       end

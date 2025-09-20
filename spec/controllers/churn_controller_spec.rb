@@ -10,21 +10,33 @@ describe ChurnController do
 
   include_context "with user signed in as admin for seller"
 
-  before(:all) do
-    if ObfuscateIds::CIPHER_KEY.nil?
-      ObfuscateIds.send(:remove_const, :CIPHER_KEY)
-      ObfuscateIds.send(:remove_const, :NUMERIC_CIPHER_KEY)
-      ObfuscateIds.const_set(:CIPHER_KEY, "testcipherkey")
-      ObfuscateIds.const_set(:NUMERIC_CIPHER_KEY, 123_456)
-    end
-  end
 
   before do
     allow(StripeBalanceEnforcer).to receive(:ensure_sufficient_balance).and_return(true)
-    Feature.activate_user(:churn_analytics, seller)
+    Feature.activate_user(:churn_analytics_enabled, seller)
   end
 
   describe "GET index" do
+    before do
+      product_double = instance_double(Link,
+                                       external_id: "prod_1",
+                                       id: 1,
+                                       alive?: true,
+                                       unique_permalink: "prod-1",
+                                       name: "Test Product")
+      allow_any_instance_of(CreatorAnalytics::Churn).to receive(:subscription_products).and_return([product_double])
+    end
+    context "when seller has no subscription products" do
+      it "returns 404" do
+        allow_any_instance_of(CreatorAnalytics::Churn).to receive(:subscription_products).and_return([])
+        expect { get :index }.to raise_error(ActionController::RoutingError)
+      end
+    end
+    it "returns 404 when feature flag is inactive" do
+      Feature.deactivate_user(:churn_analytics_enabled, seller)
+      expect { get :index }.to raise_error(ActionController::RoutingError)
+    end
+
     it_behaves_like "authorize called for action", :get, :index do
       let(:record) { :analytics }
     end
@@ -93,6 +105,27 @@ describe ChurnController do
   end
 
   describe "GET data" do
+    before do
+      # Seller has at least one subscription product so the guard passes
+      product_double = instance_double(Link,
+                                       external_id: "prod_1",
+                                       id: 1,
+                                       alive?: true,
+                                       unique_permalink: "prod-1",
+                                       name: "Test Product")
+      allow_any_instance_of(CreatorAnalytics::Churn).to receive(:subscription_products).and_return([product_double])
+    end
+
+    it "returns 404 when feature flag is inactive" do
+      Feature.deactivate_user(:churn_analytics_enabled, seller)
+      expect { get :data, params: { start_time: "2025-01-01", end_time: "2025-01-31" } }.to raise_error(ActionController::RoutingError)
+    end
+    context "when seller has no subscription products" do
+      it "returns 404" do
+        allow_any_instance_of(CreatorAnalytics::Churn).to receive(:subscription_products).and_return([])
+        expect { get :data, params: { start_time: "2025-01-01", end_time: "2025-01-31" } }.to raise_error(ActionController::RoutingError)
+      end
+    end
     let(:mock_analytics_data) do
       {
         dates: ["June 14th", "June 15th"],
@@ -120,7 +153,7 @@ describe ChurnController do
     end
 
     before do
-      allow_any_instance_of(CreatorAnalytics::Churn).to receive(:data).and_return(mock_analytics_data)
+      allow_any_instance_of(CreatorAnalytics::Churn).to receive(:generate_data).and_return(mock_analytics_data)
     end
 
     it_behaves_like "supports start and end times", :data
@@ -137,13 +170,19 @@ describe ChurnController do
     end
 
     describe "service delegation and response format" do
-      it "calls CreatorAnalytics::Churn with correct parameters and returns JSON" do
-        expect(CreatorAnalytics::Churn).to receive(:new).with(
-          seller: seller,
-          products: anything,
-          dates: anything,
-          aggregate_by: anything
-        ).and_call_original
+      it "delegates to service.generate_data with product_ids and returns JSON" do
+        service_double = instance_double(CreatorAnalytics::Churn)
+        expect(CreatorAnalytics::Churn).to receive(:new).with(seller: seller).twice.and_return(service_double)
+        allow(service_double).to receive(:subscription_products).and_return([
+                                                                              instance_double(Link, external_id: "prod_1", id: 1, alive?: true, unique_permalink: "prod-1", name: "Test Product")
+                                                                            ])
+        expect(service_double).to receive(:generate_data).with(
+          hash_including(
+            product_ids: ["product1", "product2"],
+            dates: kind_of(Range),
+            aggregate_by: "month"
+          )
+        ).and_return(mock_analytics_data)
 
         get :data, params: {
           start_time: "Mon Jul 27 2025 22:40:18 GMT-0700 (PDT)",

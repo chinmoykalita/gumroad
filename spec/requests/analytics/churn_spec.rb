@@ -23,16 +23,14 @@ describe "Churn analytics", :js, :sidekiq_inline, :elasticsearch_wait_for_refres
 
     ignore_js_error(/AbortError: Request aborted/)
     allow_any_instance_of(ApplicationController).to receive(:check_payment_details).and_return(true)
-    Feature.activate_user(:churn_analytics, seller)
+    Feature.activate_user(:churn_analytics_enabled, seller)
+
+    # Ensure the churn dashboard passes the controller guard by having at least one subscription product
+    create(:membership_product, user: seller)
   end
 
   it_behaves_like "creator dashboard page", "Analytics" do
     let(:path) { churn_dashboard_path }
-  end
-
-  it "loads the empty state page successfully" do
-    visit churn_dashboard_path
-    expect(page).to have_text("No products selected")
   end
 
   context "with subscription products" do
