@@ -36,8 +36,7 @@ describe "RenderingExtension" do
             csp_nonce: SecureHeaders.content_security_policy_script_nonce(stubbed_view_context.request),
             locale: "en-US",
             feature_flags: {
-              require_email_typo_acknowledgment: false,
-              churn_analytics_enabled: false
+              require_email_typo_acknowledgment: false
             }
           }
         )
@@ -143,8 +142,7 @@ describe "RenderingExtension" do
               csp_nonce: SecureHeaders.content_security_policy_script_nonce(stubbed_view_context.request),
               locale: "en-US",
               feature_flags: {
-                require_email_typo_acknowledgment: false,
-                churn_analytics_enabled: false
+                require_email_typo_acknowledgment: false
               }
             }
           )

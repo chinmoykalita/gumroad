@@ -1,20 +1,18 @@
 # frozen_string_literal: true
 
 class ChurnController < Sellers::BaseController
-  before_action { e404 if Feature.inactive?(:churn_analytics_enabled, current_seller) }
-  before_action(only: [:index, :data]) { e404 unless ensure_subscription_products_present }
   before_action :set_body_id_as_app
   before_action :check_payment_details, only: :index
   before_action :parse_and_validate_dates, only: :data
 
   def index
-    authorize :analytics, :index?
+    authorize :churn_analytics, :index?
 
     @churn_props = ChurnPresenter.new(seller: current_seller).page_props
   end
 
   def data
-    authorize :analytics, :index?
+    authorize :churn_analytics, :index?
 
     aggregate_by = CreatorAnalytics::Churn::AGGREGATE_OPTIONS.key?(params[:aggregate_by]) ? params[:aggregate_by] : CreatorAnalytics::Churn::AGGREGATE_BY_DAY
 
@@ -31,10 +29,6 @@ class ChurnController < Sellers::BaseController
   protected
     def set_title
       @title = "Churn analytics"
-    end
-
-    def ensure_subscription_products_present
-      CreatorAnalytics::Churn.new(seller: current_seller).subscription_products.any?
     end
 
     def parse_and_validate_dates

@@ -50,10 +50,6 @@ class CreatorAnalytics::Churn
     @aggregate_by = AGGREGATE_OPTIONS.key?(aggregate_by) ? aggregate_by : AGGREGATE_BY_DAY
     @query = build_query
 
-    data
-  end
-
-  def data
     period_data = period_data_with_churn_metrics
 
     total_stats = calculate_summary_stats(period_data.values)

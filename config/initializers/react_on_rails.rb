@@ -28,7 +28,6 @@ module RenderingExtension
       locale: view_context.controller.http_accept_language.user_preferred_languages[0] || "en-US",
       feature_flags: {
         require_email_typo_acknowledgment: Feature.active?(:require_email_typo_acknowledgment),
-        churn_analytics_enabled: Feature.active?(:churn_analytics_enabled, view_context.pundit_user&.seller),
       }
     }
   end
@@ -61,6 +60,9 @@ module RenderingExtension
     #
     def policies_props(pundit_user)
       {
+        churn_analytics: {
+          index: Pundit.policy!(pundit_user, :churn_analytics).index?,
+        },
         affiliate_requests_onboarding_form: {
           update: Pundit.policy!(pundit_user, [:affiliate_requests, :onboarding_form]).update?,
         },
