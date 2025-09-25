@@ -24,12 +24,8 @@ class CreatorAnalytics::Churn
     avg_active_base: 0
   }.freeze
 
-  def initialize(seller:, products: nil, dates: nil, aggregate_by: AGGREGATE_BY_DAY)
+  def initialize(seller:)
     @seller = seller
-    @products = products
-    @dates = dates ? constrain_dates(dates) : nil
-    @aggregate_by = aggregate_by
-    @query = build_query if @products && @dates
   end
 
   def subscription_products
@@ -45,17 +41,20 @@ class CreatorAnalytics::Churn
       subscription_products.select { product_ids.include?(it.external_id) }
     end
 
-    @products = selected_products
-    @dates = constrain_dates(dates)
-    @aggregate_by = AGGREGATE_OPTIONS.key?(aggregate_by) ? aggregate_by : AGGREGATE_BY_DAY
-    @query = build_query
+    constrained_dates = constrain_dates(dates)
+    aggregate_by = AGGREGATE_OPTIONS.key?(aggregate_by) ? aggregate_by : AGGREGATE_BY_DAY
 
-    period_data = period_data_with_churn_metrics
+    period_data = calculate_period_data_with_churn_metrics_for_dates(
+      products: selected_products,
+      start_date: constrained_dates.first,
+      end_date: constrained_dates.last,
+      aggregate_by: aggregate_by
+    )
 
     total_stats = calculate_summary_stats(period_data.values)
-    date_keys, formatted_dates = format_dates_for_display
+    date_keys, formatted_dates = format_dates_for_display(dates: constrained_dates, aggregate_by: aggregate_by)
     by_date_arrays = build_by_date_arrays(date_keys, period_data)
-    last_period_stats = calculate_last_period_stats
+    last_period_stats = calculate_last_period_stats(products: selected_products, dates: constrained_dates, aggregate_by: aggregate_by)
 
     {
       dates: formatted_dates,
@@ -68,20 +67,8 @@ class CreatorAnalytics::Churn
     }
   end
 
-  def period_data_with_churn_metrics
-    raw_data = fetch_raw_churn_data
-    calculate_churn_metrics(raw_data)
-  end
 
   private
-    def product_ids
-      @product_ids ||= @products.map(&:id)
-    end
-
-    def period_dates
-      @period_dates ||= generate_period_dates
-    end
-
     def constrain_dates(dates)
       today_date = Time.now.in_time_zone(@seller.timezone).to_date
 
@@ -98,15 +85,15 @@ class CreatorAnalytics::Churn
       (constrained_start..constrained_end).to_a
     end
 
-    def generate_period_dates
+    def generate_period_dates(dates, aggregate_by)
       period_dates = {}
 
-      if @aggregate_by == AGGREGATE_BY_MONTH
-        @dates.group_by { it.strftime("%Y-%m") }.each do |month_key, month_dates|
+      if aggregate_by == AGGREGATE_BY_MONTH
+        dates.group_by { it.strftime("%Y-%m") }.each do |month_key, month_dates|
           period_dates[month_key] = month_dates.last
         end
       else
-        @dates.each do |date|
+        dates.each do |date|
           date_key = date.strftime("%Y-%m-%d")
           period_dates[date_key] = date
         end
@@ -129,10 +116,11 @@ class CreatorAnalytics::Churn
     #     "2025-06" => 120,
     #     "2025-07" => 135
     #   }
-    def bulk_active_subscribers
+    def bulk_active_subscribers(products:, period_dates:, aggregate_by:)
       filters_hash = {}
+      product_ids = products.map(&:id)
       period_dates.each do |period_key, period_date|
-        start_dt = @aggregate_by == AGGREGATE_BY_MONTH ? period_date.beginning_of_month : period_date
+        start_dt = aggregate_by == AGGREGATE_BY_MONTH ? period_date.beginning_of_month : period_date
 
         filters_hash[period_key] = {
           bool: {
@@ -173,21 +161,26 @@ class CreatorAnalytics::Churn
       response.transform_values { it.unique_subscriptions.value.to_i }
     end
 
-    def build_query
+    def calculate_period_data_with_churn_metrics_for_dates(products:, start_date:, end_date:, aggregate_by: AGGREGATE_BY_DAY)
+      raw_data = fetch_raw_churn_data(products:, start_date:, end_date:, aggregate_by:)
+      calculate_churn_metrics(churn_data: raw_data, products:, start_date:, end_date:, aggregate_by:)
+    end
+
+    def build_query(product_ids:, start_date:, end_date:)
       search_service = PurchaseSearchService.new(Purchase::CHARGED_SALES_SEARCH_OPTIONS)
       query = search_service.body[:query]
 
       query[:bool][:must] << { exists: { field: "subscription_deactivated_at" } }
       query[:bool][:must] << { term: { selected_flags: "is_original_subscription_purchase" } }
       query[:bool][:filter] << { terms: { product_id: product_ids } }
-      query[:bool][:filter] << { range: { subscription_deactivated_at: { time_zone: @seller.timezone_formatted_offset, gte: @dates.first.to_s, lte: @dates.last.to_s } } }
+      query[:bool][:filter] << { range: { subscription_deactivated_at: { time_zone: @seller.timezone_formatted_offset, gte: start_date.to_s, lte: end_date.to_s } } }
 
       query
     end
 
-    def paginate(sources:)
+    def paginate(query:, sources:)
       after_key = nil
-      body = build_body(sources)
+      body = build_body(query, sources)
       buckets = []
       loop do
         body[:aggs][:composite_agg][:composite][:after] = after_key if after_key
@@ -199,9 +192,9 @@ class CreatorAnalytics::Churn
       buckets
     end
 
-    def build_body(sources)
+    def build_body(query, sources)
       {
-        query: @query,
+        query: query,
         size: 0,
         aggs: {
           composite_agg: {
@@ -214,15 +207,17 @@ class CreatorAnalytics::Churn
       }
     end
 
-    def fetch_raw_churn_data
-      aggregate_config = AGGREGATE_OPTIONS[@aggregate_by]
+    def fetch_raw_churn_data(products:, start_date:, end_date:, aggregate_by:)
+      aggregate_config = AGGREGATE_OPTIONS[aggregate_by]
       calendar_interval = aggregate_config[:calendar_interval]
       date_format = aggregate_config[:date_format]
+      product_ids = products.map(&:id)
+      query = build_query(product_ids:, start_date:, end_date:)
 
       sources = [
         { date: { date_histogram: { time_zone: @seller.timezone_formatted_offset, field: "subscription_deactivated_at", calendar_interval: calendar_interval, format: date_format } } }
       ]
-      paginate(sources:).each_with_object({}) do |bucket, result|
+      paginate(query:, sources:).each_with_object({}) do |bucket, result|
         result[bucket["key"]["date"]] = {
           churned_users: bucket["doc_count"],
           revenue_lost_cents: bucket["revenue_lost"]["value"].to_i,
@@ -230,9 +225,10 @@ class CreatorAnalytics::Churn
       end
     end
 
-    # Takes raw churn data and calculates churn rate % and adds active subscriber counts
-    def calculate_churn_metrics(churn_data)
-      active_counts = bulk_active_subscribers
+    def calculate_churn_metrics(churn_data:, products:, start_date:, end_date:, aggregate_by:)
+      dates = (start_date..end_date).to_a
+      period_dates = generate_period_dates(dates, aggregate_by)
+      active_counts = bulk_active_subscribers(products:, period_dates:, aggregate_by:)
 
       period_dates.each do |period_key, _period_date|
         churned_users = churn_data.dig(period_key, :churned_users) || 0
@@ -275,8 +271,8 @@ class CreatorAnalytics::Churn
       }
     end
 
-    def calculate_last_period_stats
-      last_start, last_end = calculate_last_period_dates
+    def calculate_last_period_stats(products:, dates:, aggregate_by:)
+      last_start, last_end = calculate_last_period_dates(dates:, aggregate_by:)
 
       first_sale_created_at = @seller.first_sale_created_at_for_analytics
       if first_sale_created_at
@@ -285,21 +281,15 @@ class CreatorAnalytics::Churn
       end
       return ZERO_STATS if last_start >= last_end
 
-      last_period_service = self.class.new(
-        seller: @seller,
-        products: @products,
-        dates: (last_start..last_end),
-        aggregate_by: @aggregate_by
-      )
-      last_period_data = last_period_service.period_data_with_churn_metrics
+      last_period_data = calculate_period_data_with_churn_metrics_for_dates(products:, start_date: last_start, end_date: last_end, aggregate_by:)
       calculate_summary_stats(last_period_data.values)
     end
 
-    def calculate_last_period_dates
-      start_date = @dates.first
-      end_date = @dates.last
+    def calculate_last_period_dates(dates:, aggregate_by:)
+      start_date = dates.first
+      end_date = dates.last
 
-      if @aggregate_by == AGGREGATE_BY_MONTH
+      if aggregate_by == AGGREGATE_BY_MONTH
         months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month) + 1
         last_end = start_date.beginning_of_month - 1.day
         last_start = (last_end + 1.day - months.months).beginning_of_month
@@ -311,11 +301,11 @@ class CreatorAnalytics::Churn
       [last_start, last_end]
     end
 
-    def format_dates_for_display
-      start_date = @dates.first
-      end_date = @dates.last
+    def format_dates_for_display(dates:, aggregate_by:)
+      start_date = dates.first
+      end_date = dates.last
 
-      if @aggregate_by == AGGREGATE_BY_MONTH
+      if aggregate_by == AGGREGATE_BY_MONTH
         date_keys = (start_date..end_date).to_a.group_by { it.strftime("%Y-%m") }.keys.sort
         formatted = date_keys.map { Date.strptime("#{it}-01", "%Y-%m-%d").strftime("%B %Y") }
       else
