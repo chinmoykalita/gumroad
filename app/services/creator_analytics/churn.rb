@@ -42,7 +42,6 @@ class CreatorAnalytics::Churn
     end
 
     constrained_dates = constrain_dates(dates)
-    aggregate_by = AGGREGATE_OPTIONS.key?(aggregate_by) ? aggregate_by : AGGREGATE_BY_DAY
 
     period_data = calculate_period_data_with_churn_metrics_for_dates(
       products: selected_products,
