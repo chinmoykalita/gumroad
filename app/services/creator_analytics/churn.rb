@@ -133,7 +133,7 @@ class CreatorAnalytics::Churn
             ],
             should: [
               { bool: { must_not: { exists: { field: "subscription_deactivated_at" } } } },
-              { range: { subscription_deactivated_at: { gte: start_dt.beginning_of_day.iso8601 } } }
+              { range: { subscription_deactivated_at: { gt: start_dt.beginning_of_day.iso8601 } } }
             ],
             minimum_should_match: 1
           }
