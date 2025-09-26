@@ -146,16 +146,14 @@ describe CreatorAnalytics::Churn do
       it "constrains future dates to today" do
         future_dates = (Date.new(2030, 1, 1)..Date.new(2030, 1, 3))
         service = described_class.new(seller: @user)
-        service.generate_data(product_ids: [subscription_product.external_id], dates: future_dates)
-        constrained_dates = service.instance_variable_get(:@dates)
+        constrained_dates = service.send(:constrain_dates, future_dates)
         expect(constrained_dates.last).to be <= Date.current
       end
 
       it "constrains early dates to seller creation date" do
         early_dates = (Date.new(2010, 1, 1)..Date.new(2010, 1, 3))
         service = described_class.new(seller: @user)
-        service.generate_data(product_ids: [subscription_product.external_id], dates: early_dates)
-        constrained_dates = service.instance_variable_get(:@dates)
+        constrained_dates = service.send(:constrain_dates, early_dates)
         expect(constrained_dates.first).to be >= @user.created_at.to_date
       end
     end
