@@ -115,11 +115,16 @@ class CreatorAnalytics::Churn
     #     "2025-06" => 120,
     #     "2025-07" => 135
     #   }
-    def bulk_active_subscribers(products:, period_dates:, aggregate_by:)
+    def bulk_active_subscribers(products:, period_dates:, aggregate_by:, period_start_date:)
       filters_hash = {}
       product_ids = products.map(&:id)
       period_dates.each do |period_key, period_date|
-        start_dt = aggregate_by == AGGREGATE_BY_MONTH ? period_date.beginning_of_month : period_date
+        start_dt = if aggregate_by == AGGREGATE_BY_MONTH
+          # Monthly baseline: later of report start or month start (partial-month alignment) to match the actual date range
+          [period_start_date, period_date.beginning_of_month].max
+        else
+          period_date
+        end
 
         filters_hash[period_key] = {
           bool: {
@@ -227,7 +232,7 @@ class CreatorAnalytics::Churn
     def calculate_churn_metrics(churn_data:, products:, start_date:, end_date:, aggregate_by:)
       dates = (start_date..end_date).to_a
       period_dates = generate_period_dates(dates, aggregate_by)
-      active_counts = bulk_active_subscribers(products:, period_dates:, aggregate_by:)
+      active_counts = bulk_active_subscribers(products:, period_dates:, aggregate_by:, period_start_date: start_date)
 
       period_dates.each do |period_key, _period_date|
         churned_users = churn_data.dig(period_key, :churned_users) || 0
