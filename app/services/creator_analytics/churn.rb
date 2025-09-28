@@ -177,7 +177,7 @@ class CreatorAnalytics::Churn
       query[:bool][:must] << { exists: { field: "subscription_deactivated_at" } }
       query[:bool][:must] << { term: { selected_flags: "is_original_subscription_purchase" } }
       query[:bool][:filter] << { terms: { product_id: product_ids } }
-      query[:bool][:filter] << { range: { subscription_deactivated_at: { time_zone: @seller.timezone_formatted_offset, gte: start_date.to_s, lte: end_date.to_s } } }
+      query[:bool][:filter] << { range: { subscription_deactivated_at: { time_zone: @seller.timezone_formatted_offset, gte: start_date.beginning_of_day.iso8601, lte: end_date.end_of_day.iso8601 } } }
 
       query
     end
