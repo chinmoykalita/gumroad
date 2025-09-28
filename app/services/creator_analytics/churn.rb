@@ -281,9 +281,15 @@ class CreatorAnalytics::Churn
       first_sale_created_at = @seller.first_sale_created_at_for_analytics
       if first_sale_created_at
         earliest_date = first_sale_created_at.in_time_zone(@seller.timezone).to_date
-        return ZERO_STATS if last_start < earliest_date
+        if last_start < earliest_date
+          Rails.logger.warn("CreatorAnalytics::Churn#calculate_last_period_stats Skipping last period: starts_before_earliest_date seller_id=#{@seller.id} aggregate_by=#{aggregate_by} last_start=#{last_start} last_end=#{last_end} earliest_date=#{earliest_date}")
+          return ZERO_STATS
+        end
       end
-      return ZERO_STATS if last_start >= last_end
+      if last_start > last_end
+        Rails.logger.warn("CreatorAnalytics::Churn#calculate_last_period_stats Skipping last period: invalid_window seller_id=#{@seller.id} aggregate_by=#{aggregate_by} last_start=#{last_start} last_end=#{last_end}")
+        return ZERO_STATS
+      end
 
       last_period_data = calculate_period_data_with_churn_metrics_for_dates(products:, start_date: last_start, end_date: last_end, aggregate_by:)
       calculate_summary_stats(last_period_data.values)
