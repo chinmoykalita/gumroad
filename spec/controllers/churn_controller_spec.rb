@@ -26,19 +26,8 @@ describe ChurnController do
                                        name: "Test Product")
       allow_any_instance_of(CreatorAnalytics::Churn).to receive(:subscription_products).and_return([product_double])
     end
-    context "when seller has no subscription products" do
-      it "returns 404" do
-        allow_any_instance_of(CreatorAnalytics::Churn).to receive(:subscription_products).and_return([])
-        expect { get :index }.to raise_error(ActionController::RoutingError)
-      end
-    end
-    it "returns 404 when feature flag is inactive" do
-      Feature.deactivate_user(:churn_analytics_enabled, seller)
-      expect { get :index }.to raise_error(ActionController::RoutingError)
-    end
-
     it_behaves_like "authorize called for action", :get, :index do
-      let(:record) { :analytics }
+      let(:record) { :churn_analytics }
     end
 
     context "stripe connect requirements" do
@@ -116,50 +105,38 @@ describe ChurnController do
       allow_any_instance_of(CreatorAnalytics::Churn).to receive(:subscription_products).and_return([product_double])
     end
 
-    it "returns 404 when feature flag is inactive" do
-      Feature.deactivate_user(:churn_analytics_enabled, seller)
-      expect { get :data, params: { start_time: "2025-01-01", end_time: "2025-01-31" } }.to raise_error(ActionController::RoutingError)
-    end
-    context "when seller has no subscription products" do
-      it "returns 404" do
-        allow_any_instance_of(CreatorAnalytics::Churn).to receive(:subscription_products).and_return([])
-        expect { get :data, params: { start_time: "2025-01-01", end_time: "2025-01-31" } }.to raise_error(ActionController::RoutingError)
-      end
-    end
-    let(:mock_analytics_data) do
+    let(:mock_service_data) do
       {
-        dates: ["June 14th", "June 15th"],
-        start_date: "June 14th",
-        end_date: "June 15th",
-        by_date: {
-          churn_rate: [5.2, 7.8],
-          churned_users: [3, 5],
-          revenue_lost_cents: [1500, 2500]
-        },
-        total: {
-          churned_users: 8,
-          revenue_lost_cents: 4000,
-          churn_rate: 6.5,
-          avg_active_base: 120
-        },
-        last_period: {
-          churned_users: 5,
-          revenue_lost_cents: 2000,
-          churn_rate: 4.2,
-          avg_active_base: 100
-        },
-        first_sale_date: "January 1, 2021"
+        period_data: { Date.parse("2025-06-14") => { churn_rate: 5.2, churned_users: 3, revenue_lost_cents: 1500 },
+                       Date.parse("2025-06-15") => { churn_rate: 7.8, churned_users: 5, revenue_lost_cents: 2500 } },
+        start_date: Date.parse("2025-06-14"),
+        end_date: Date.parse("2025-06-15"),
+        total: { churned_users: 8, revenue_lost_cents: 4000, churn_rate: 6.5, avg_active_base: 120 },
+        last_period: { churned_users: 5, revenue_lost_cents: 2000, churn_rate: 4.2, avg_active_base: 100 },
+        first_sale_date: Date.parse("2021-01-01")
+      }
+    end
+
+    let(:mock_presenter_json) do
+      {
+        chart_points: [
+          { churn_rate: 5.2, churned_users: 3, revenue_lost_cents: 1500, title: "Saturday, June 14th", label: "Saturday, June 14th" },
+          { churn_rate: 7.8, churned_users: 5, revenue_lost_cents: 2500, title: "Sunday, June 15th", label: "Sunday, June 15th" }
+        ],
+        totals: { churn_rate: 6.5, last_period_churn_rate: 4.2, revenue_lost_cents: 4000, churned_users: 8 },
+        first_sale_date: "January 01, 2021"
       }
     end
 
     before do
-      allow_any_instance_of(CreatorAnalytics::Churn).to receive(:generate_data).and_return(mock_analytics_data)
+      allow_any_instance_of(CreatorAnalytics::Churn).to receive(:generate_data).and_return(mock_service_data)
+      allow_any_instance_of(ChurnPresenter).to receive(:serialize_churn).and_return(mock_presenter_json)
     end
 
     it_behaves_like "supports start and end times", :data
 
     it_behaves_like "authorize called for action", :get, :data do
-      let(:record) { :analytics }
+      let(:record) { :churn_analytics }
       let(:policy_method) { :index? }
       let(:request_params) do
         {
@@ -170,7 +147,7 @@ describe ChurnController do
     end
 
     describe "service delegation and response format" do
-      it "delegates to service.generate_data with product_ids and returns JSON" do
+      it "delegates to service.generate_data and presenter.serialize_churn, returning JSON" do
         service_double = instance_double(CreatorAnalytics::Churn)
         expect(CreatorAnalytics::Churn).to receive(:new).with(seller: seller).twice.and_return(service_double)
         allow(service_double).to receive(:subscription_products).and_return([
@@ -182,7 +159,8 @@ describe ChurnController do
             dates: kind_of(Range),
             aggregate_by: "month"
           )
-        ).and_return(mock_analytics_data)
+        ).and_return(mock_service_data)
+        expect_any_instance_of(ChurnPresenter).to receive(:serialize_churn).with(data: mock_service_data, aggregate_by: "month").and_return(mock_presenter_json)
 
         get :data, params: {
           start_time: "Mon Jul 27 2025 22:40:18 GMT-0700 (PDT)",
@@ -195,8 +173,8 @@ describe ChurnController do
         expect(response.content_type).to include("application/json")
 
         json_response = JSON.parse(response.body)
-        expect(json_response).to include("dates", "by_date", "total", "last_period")
-        expect(json_response["total"]).to include("churned_users", "revenue_lost_cents", "churn_rate")
+        expect(json_response).to include("chart_points", "totals", "first_sale_date")
+        expect(json_response["totals"]).to include("churned_users", "revenue_lost_cents", "churn_rate", "last_period_churn_rate")
       end
     end
 

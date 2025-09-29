@@ -12,6 +12,49 @@ class ChurnPresenter
     }
   end
 
+  # Formats the Date-keyed churn analytics data returned by the service
+  # into the structure expected by the frontend.
+  #
+  # Expected output shape:
+  # {
+  #   chart_points: [{ churn_rate, churned_users, revenue_lost_cents, title, label }, ...],
+  #   totals: { churn_rate, last_period_churn_rate, revenue_lost_cents, churned_users },
+  #   first_sale_date: "June 01, 2025" | nil
+  # }
+  def serialize_churn(data:, aggregate_by: CreatorAnalytics::Churn::AGGREGATE_BY_DAY)
+    start_date = data[:start_date]
+    end_date = data[:end_date]
+    period_data = data[:period_data] || {}
+
+    date_keys, formatted_dates = format_dates_for_display(start_date:, end_date:, aggregate_by:)
+
+    chart_points = date_keys.each_with_index.map do |k, index|
+      values = period_data[k] || {}
+      {
+        churn_rate: values[:churn_rate] || 0.0,
+        churned_users: values[:churned_users] || 0,
+        revenue_lost_cents: values[:revenue_lost_cents] || 0,
+        title: formatted_dates[index],
+        label: (index == 0 ? formatted_dates.first : (index == date_keys.size - 1 ? formatted_dates.last : ""))
+      }
+    end
+
+    total = data[:total] || {}
+    last = data[:last_period] || {}
+    totals = {
+      churn_rate: total[:churn_rate] || 0.0,
+      last_period_churn_rate: last[:churn_rate] || 0.0,
+      revenue_lost_cents: total[:revenue_lost_cents] || 0,
+      churned_users: total[:churned_users] || 0
+    }
+
+    {
+      chart_points: chart_points,
+      totals: totals,
+      first_sale_date: format_first_sale_date(data[:first_sale_date])
+    }
+  end
+
   private
     attr_reader :seller
 
@@ -23,5 +66,30 @@ class ChurnPresenter
       CreatorAnalytics::Churn::AGGREGATE_OPTIONS.map do |value, config|
         { value: value, title: config[:title] }
       end
+    end
+
+    def format_dates_for_display(start_date:, end_date:, aggregate_by:)
+      if aggregate_by == CreatorAnalytics::Churn::AGGREGATE_BY_MONTH
+        # Build list of first-of-month dates between start and end
+        cursor = Date.new(start_date.year, start_date.month, 1)
+        last_month_start = Date.new(end_date.year, end_date.month, 1)
+        date_keys = []
+        while cursor <= last_month_start
+          date_keys << cursor
+          cursor = cursor >> 1
+        end
+        formatted = date_keys.map { it.strftime("%B %Y") }
+      else
+        date_keys = (start_date..end_date).to_a
+        formatted = date_keys.map do |date|
+          date.strftime("%A, %B #{date.day.ordinalize}")
+        end
+      end
+      [date_keys, formatted]
+    end
+
+    def format_first_sale_date(date)
+      return nil unless date
+      date.strftime("%B %d, %Y")
     end
 end

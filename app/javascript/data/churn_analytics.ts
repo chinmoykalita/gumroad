@@ -2,27 +2,23 @@ import { cast } from "ts-safe-cast";
 
 import { request } from "$app/utils/request";
 
-type ByDateArray = number[];
+export type ChurnDataPoint = {
+  churn_rate: number;
+  churned_users: number;
+  revenue_lost_cents: number;
+  title: string;
+  label: string;
+};
 
 export type ChurnData = {
-  dates: string[];
-  start_date: string;
-  end_date: string;
-  by_date: {
-    churn_rate: ByDateArray;
-    churned_users: ByDateArray;
-    revenue_lost_cents: ByDateArray;
-  };
-  total: {
+  chart_points: ChurnDataPoint[];
+  totals: {
     churn_rate: number;
-    churned_users: number;
+    last_period_churn_rate: number;
     revenue_lost_cents: number;
-  };
-  last_period?: {
-    churn_rate: number;
     churned_users: number;
-    revenue_lost_cents: number;
   };
+  first_sale_date: string | null;
 };
 
 export const fetchChurnData = ({

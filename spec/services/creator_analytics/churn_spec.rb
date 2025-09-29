@@ -64,7 +64,7 @@ describe CreatorAnalytics::Churn do
           aggregate_by: "day"
         )
 
-        expect(result[:by_date][:churned_users]).to include(a_value > 0)
+        expect(result[:period_data].values.map { it[:churned_users] }.sum).to be > 0
         expect(result[:total][:churned_users]).to eq(3)
         expect(result[:total][:revenue_lost_cents]).to eq(4500) # 1000 + 2000 + 1500
         expect(result[:total][:churn_rate]).to be > 0
@@ -111,9 +111,9 @@ describe CreatorAnalytics::Churn do
         )
 
         # Should have 2 months of data
-        expect(result[:dates].length).to eq(2)
-        expect(result[:by_date][:churned_users].sum).to eq(2)
-        expect(result[:by_date][:revenue_lost_cents].sum).to eq(3000)
+        expect(result[:period_data].keys.length).to eq(2)
+        expect(result[:period_data].values.sum { it[:churned_users] }).to eq(2)
+        expect(result[:period_data].values.sum { it[:revenue_lost_cents] }).to eq(3000)
       end
 
       it "handles daily vs monthly aggregation differences" do
@@ -133,9 +133,9 @@ describe CreatorAnalytics::Churn do
         )
 
         # Both should have same data structure
-        expect(daily_result.keys).to eq(monthly_result.keys)
-        expect(daily_result).to include(:dates, :by_date, :total, :last_period)
-        expect(monthly_result).to include(:dates, :by_date, :total, :last_period)
+        expected_keys = [:period_data, :start_date, :end_date, :total, :last_period, :first_sale_date]
+        expect(daily_result.keys).to match_array(expected_keys)
+        expect(monthly_result.keys).to match_array(expected_keys)
 
         # Total metrics should be similar (same period, different aggregation)
         expect(daily_result[:total][:churned_users]).to eq(monthly_result[:total][:churned_users])
@@ -179,11 +179,10 @@ describe CreatorAnalytics::Churn do
         )
 
         # Check the structured data format
-        expect(result).to include(:dates, :by_date, :total, :last_period)
-        expect(result[:by_date]).to include(:churn_rate, :churned_users, :revenue_lost_cents)
+        expect(result).to include(:period_data, :start_date, :end_date, :total, :last_period, :first_sale_date)
 
         # Check that we have data for the expected date range
-        expect(result[:dates].length).to eq(3) # 3 days
+        expect(result[:period_data].keys.length).to eq(3) # 3 days
         expect(result[:total][:churned_users]).to eq(1)
         expect(result[:total][:revenue_lost_cents]).to eq(1500)
       end

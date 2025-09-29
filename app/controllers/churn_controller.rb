@@ -17,13 +17,14 @@ class ChurnController < Sellers::BaseController
     aggregate_by = CreatorAnalytics::Churn::AGGREGATE_OPTIONS.key?(params[:aggregate_by]) ? params[:aggregate_by] : CreatorAnalytics::Churn::AGGREGATE_BY_DAY
 
     churn_service = CreatorAnalytics::Churn.new(seller: current_seller)
-    analytics_data = churn_service.generate_data(
+    raw_data = churn_service.generate_data(
       product_ids: params[:product_ids],
       dates: @start_date..@end_date,
       aggregate_by:
     )
 
-    render json: analytics_data
+    presenter = ChurnPresenter.new(seller: current_seller)
+    render json: presenter.serialize_churn(data: raw_data, aggregate_by:)
   end
 
   protected

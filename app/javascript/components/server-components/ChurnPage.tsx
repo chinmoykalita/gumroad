@@ -71,25 +71,9 @@ const ChurnPage = ({
     void loadData();
   }, [startTime, endTime, aggregateBy, selectedProductIds, hasSelectedProducts]);
 
-  const totals: ChurnTotals | undefined = dataByDate
-    ? {
-        churn_rate: dataByDate.total.churn_rate,
-        last_period_churn_rate: dataByDate.last_period?.churn_rate || 0,
-        revenue_lost_cents: dataByDate.total.revenue_lost_cents,
-        churned_users: dataByDate.total.churned_users,
-      }
-    : undefined;
+  const totals: ChurnTotals | undefined = dataByDate ? dataByDate.totals : undefined;
 
-  const chartData: ChurnDataPoint[] = React.useMemo(() => {
-    if (!dataByDate) return [];
-    return dataByDate.dates.map((date, index) => ({
-      churn_rate: dataByDate.by_date.churn_rate[index] || 0,
-      churned_users: dataByDate.by_date.churned_users[index] || 0,
-      revenue_lost_cents: dataByDate.by_date.revenue_lost_cents[index] || 0,
-      title: date,
-      label: index === 0 ? dataByDate.start_date : index === dataByDate.dates.length - 1 ? dataByDate.end_date : "",
-    }));
-  }, [dataByDate]);
+  const chartData: ChurnDataPoint[] = React.useMemo(() => (dataByDate ? dataByDate.chart_points : []), [dataByDate]);
 
   return (
     <AnalyticsLayout
