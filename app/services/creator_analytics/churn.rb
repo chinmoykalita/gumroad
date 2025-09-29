@@ -157,8 +157,8 @@ class CreatorAnalytics::Churn
     end
 
     def calculate_period_data_with_churn_metrics_for_dates(products:, start_date:, end_date:, aggregate_by: AGGREGATE_BY_DAY)
-      raw_data = fetch_raw_churn_data(products:, start_date:, end_date:, aggregate_by:)
-      calculate_churn_metrics(churn_data: raw_data, products:, start_date:, end_date:, aggregate_by:)
+      churn_data = fetch_raw_churn_data(products:, start_date:, end_date:, aggregate_by:)
+      calculate_churn_metrics(churn_data:, products:, start_date:, end_date:, aggregate_by:)
     end
 
     def build_query(product_ids:, start_date:, end_date:)
