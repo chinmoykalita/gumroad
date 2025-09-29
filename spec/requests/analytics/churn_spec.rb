@@ -9,15 +9,6 @@ describe "Churn analytics", :js, :sidekiq_inline, :elasticsearch_wait_for_refres
 
   include_context "with switching account to user as admin for seller"
 
-  before(:all) do
-    if ObfuscateIds::CIPHER_KEY.nil?
-      ObfuscateIds.send(:remove_const, :CIPHER_KEY)
-      ObfuscateIds.send(:remove_const, :NUMERIC_CIPHER_KEY)
-      ObfuscateIds.const_set(:CIPHER_KEY, "testcipherkey")
-      ObfuscateIds.const_set(:NUMERIC_CIPHER_KEY, 123_456)
-    end
-  end
-
   before do
     allow(StripeBalanceEnforcer).to receive(:ensure_sufficient_balance).and_return(true)
 
