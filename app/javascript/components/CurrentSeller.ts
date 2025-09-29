@@ -14,7 +14,6 @@ export type CurrentSeller = {
   isBuyer: boolean;
   timeZone: TimeZone;
   has_published_products: boolean;
-  has_subscription_products: boolean;
 };
 
 const Context = React.createContext<CurrentSeller | null | undefined>(undefined);
@@ -29,7 +28,6 @@ export const parseCurrentSeller = (data: unknown): CurrentSeller | null => {
     is_buyer: boolean;
     time_zone: TimeZone;
     has_published_products: boolean;
-    has_subscription_products: boolean;
   } | null>(data);
   if (parsed == null) return null;
   return {
@@ -41,7 +39,6 @@ export const parseCurrentSeller = (data: unknown): CurrentSeller | null => {
     isBuyer: parsed.is_buyer,
     timeZone: parsed.time_zone,
     has_published_products: parsed.has_published_products,
-    has_subscription_products: parsed.has_subscription_products,
   };
 };
 

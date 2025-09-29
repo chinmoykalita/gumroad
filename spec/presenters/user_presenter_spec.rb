@@ -13,20 +13,6 @@ describe UserPresenter do
     end
   end
 
-  describe "#as_current_seller" do
-    it "sets has_subscription_products to true when seller has a membership/subscription product" do
-      create(:membership_product, user: seller)
-      props = presenter.as_current_seller
-      expect(props[:has_subscription_products]).to eq(true)
-    end
-
-    it "sets has_subscription_products to false when seller has no subscription products" do
-      create(:product, user: seller)
-      props = presenter.as_current_seller
-      expect(props[:has_subscription_products]).to eq(false)
-    end
-  end
-
   describe "#audience_types" do
     it "returns array with matching classes to audience stats" do
       expect(presenter.audience_types).to be_empty
