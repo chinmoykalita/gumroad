@@ -70,22 +70,26 @@ class ChurnPresenter
 
     def format_dates_for_display(start_date:, end_date:, aggregate_by:)
       if aggregate_by == CreatorAnalytics::Churn::AGGREGATE_BY_MONTH
-        # Build list of first-of-month dates between start and end
-        cursor = Date.new(start_date.year, start_date.month, 1)
-        last_month_start = Date.new(end_date.year, end_date.month, 1)
-        date_keys = []
-        while cursor <= last_month_start
-          date_keys << cursor
-          cursor = cursor >> 1
-        end
+        date_keys = generate_monthly_dates(start_date, end_date)
         formatted = date_keys.map { it.strftime("%B %Y") }
       else
         date_keys = (start_date..end_date).to_a
-        formatted = date_keys.map do |date|
-          date.strftime("%A, %B #{date.day.ordinalize}")
+        formatted = date_keys.map { it.strftime("%A, %B #{it.day.ordinalize}") }
+      end
+
+      [date_keys, formatted]
+    end
+
+    def generate_monthly_dates(start_date, end_date)
+      cursor = Date.new(start_date.year, start_date.month, 1)
+      last_month_start = Date.new(end_date.year, end_date.month, 1)
+
+      [].tap do |dates|
+        while cursor <= last_month_start
+          dates << cursor
+          cursor = cursor >> 1
         end
       end
-      [date_keys, formatted]
     end
 
     def format_first_sale_date(date)
