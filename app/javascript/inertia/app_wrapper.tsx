@@ -56,9 +56,6 @@ type GlobalProps = {
   };
   href: string;
   locale: string;
-  feature_flags: {
-    require_email_typo_acknowledgment: boolean;
-  };
 };
 
 export default function AppWrapper({ children, global }: { children: React.ReactNode; global: GlobalProps }) {
