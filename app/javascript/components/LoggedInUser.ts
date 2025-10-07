@@ -12,6 +12,9 @@ export type TeamMembership = {
 };
 
 type Policies = {
+  churn_analytics: {
+    index: boolean;
+  };
   affiliate_requests_onboarding_form: {
     update: boolean;
   };

@@ -60,6 +60,9 @@ module RenderingExtension
     #
     def policies_props(pundit_user)
       {
+        churn_analytics: {
+          index: Pundit.policy!(pundit_user, :churn_analytics).index?,
+        },
         affiliate_requests_onboarding_form: {
           update: Pundit.policy!(pundit_user, [:affiliate_requests, :onboarding_form]).update?,
         },
