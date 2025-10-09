@@ -29,7 +29,7 @@ export const Chart = ({
   const uid = React.useId();
   return (
     <section
-      className="rounded border border-parentBorder bg-background p-6 text-foreground"
+      className="rounded border border-border bg-background p-6 text-foreground"
       aria-describedby={tooltip ? uid : undefined}
     >
       <div className="relative">
