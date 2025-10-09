@@ -1,6 +1,5 @@
 import cx from "classnames";
 import * as React from "react";
-import { createCast } from "ts-safe-cast";
 
 import {
   createUpsell,
@@ -8,6 +7,8 @@ import {
   getCartItem,
   getPagedUpsells,
   getStatistics,
+  pauseUpsell,
+  resumeUpsell,
   updateUpsell,
   UpsellPayload,
   UpsellStatistics,
@@ -18,13 +19,13 @@ import { PLACEHOLDER_CART_ITEM } from "$app/utils/cart";
 import { CurrencyCode, formatPriceCentsWithCurrencySymbol } from "$app/utils/currency";
 import { asyncVoid } from "$app/utils/promise";
 import { AbortError, assertResponseError } from "$app/utils/request";
-import { register } from "$app/utils/serverComponentUtil";
 
 import { Button } from "$app/components/Button";
 import { ProductToAdd, CartItem } from "$app/components/Checkout/cartState";
 import { CheckoutPreview } from "$app/components/CheckoutDashboard/CheckoutPreview";
 import { DiscountInput, InputtedDiscount } from "$app/components/CheckoutDashboard/DiscountInput";
 import { Layout, Page } from "$app/components/CheckoutDashboard/Layout";
+import { useClientAlert } from "$app/components/ClientAlertProvider";
 import { Details } from "$app/components/Details";
 import { Icon } from "$app/components/Icons";
 import { useLoggedInUser } from "$app/components/LoggedInUser";
@@ -32,7 +33,6 @@ import { Pagination, PaginationProps } from "$app/components/Pagination";
 import { Popover } from "$app/components/Popover";
 import { applySelection } from "$app/components/Product/ConfigurationSelector";
 import { Select } from "$app/components/Select";
-import { showAlert } from "$app/components/server-components/Alert";
 import { CrossSellModal, UpsellModal } from "$app/components/server-components/CheckoutPage";
 import { PageHeader } from "$app/components/ui/PageHeader";
 import { useDebouncedCallback } from "$app/components/useDebouncedCallback";
@@ -53,6 +53,7 @@ export type Upsell = {
   universal: boolean;
   cross_sell: boolean;
   replace_selected_products: boolean;
+  paused: boolean;
   product: {
     id: string;
     name: string;
@@ -78,12 +79,15 @@ export type QueryParams = {
 const formatOfferedProductName = (productName: string, variantName?: string) =>
   `${productName}${variantName ? ` - ${variantName}` : ""}`;
 
-const UpsellsPage = (props: {
+export type UpsellsPageProps = {
   pages: Page[];
   upsells: Upsell[];
   products: { id: string; name: string; has_multiple_versions: boolean; native_type: ProductNativeType }[];
   pagination: PaginationProps;
-}) => {
+};
+
+const UpsellsPage = (props: UpsellsPageProps) => {
+  const { showAlert } = useClientAlert();
   const loggedInUser = useLoggedInUser();
   const isReadOnly = !loggedInUser?.policies.upsell.create;
 
@@ -196,6 +200,26 @@ const UpsellsPage = (props: {
     setIsLoading(false);
   });
 
+  const handleTogglePause = asyncVoid(async () => {
+    if (!selectedUpsell) return;
+    try {
+      setIsLoading(true);
+      if (selectedUpsell.paused) {
+        await resumeUpsell(selectedUpsell.id);
+        showAlert("Upsell resumed and will appear at checkout.", "success");
+      } else {
+        await pauseUpsell(selectedUpsell.id);
+        showAlert("Upsell paused and will not appear at checkout.", "success");
+      }
+      const updatedData = await getPagedUpsells(pagination.page, searchQuery, sort).response;
+      setState(updatedData);
+    } catch (e) {
+      assertResponseError(e);
+      showAlert(e.message, "error");
+    }
+    setIsLoading(false);
+  });
+
   return view === "list" ? (
     <Layout
       currentPage="upsells"
@@ -243,6 +267,7 @@ const UpsellsPage = (props: {
                   <th {...thProps("name")}>Upsell</th>
                   <th {...thProps("revenue")}>Revenue</th>
                   <th {...thProps("uses")}>Uses</th>
+                  <th {...thProps("uses")}>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -281,6 +306,7 @@ const UpsellsPage = (props: {
                           <td aria-busy> </td>
                         </>
                       )}
+                      <td>{upsell.paused ? "Paused" : "Live"}</td>
                     </tr>
                   );
                 })}
@@ -316,6 +342,7 @@ const UpsellsPage = (props: {
             onCreate={() => setView("create")}
             onEdit={() => setView("edit")}
             onDelete={handleDelete}
+            onTogglePause={handleTogglePause}
             onClose={handleCancel}
             isLoading={isLoading}
           />
@@ -349,6 +376,7 @@ const UpsellDrawer = ({
   onCreate,
   onEdit,
   onDelete,
+  onTogglePause,
   onClose,
   isLoading,
 }: {
@@ -357,6 +385,7 @@ const UpsellDrawer = ({
   onCreate: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onTogglePause: () => void;
   onClose: () => void;
   isLoading: boolean;
 }) => {
@@ -402,6 +431,15 @@ const UpsellDrawer = ({
             </div>
           </>
         ) : null}
+        <div>
+          <h5>Status</h5>
+          <span>{selectedUpsell.paused ? "Paused" : "Live"}</span>
+        </div>
+      </section>
+      <section className="override grid auto-cols-fr grid-flow-col gap-4">
+        <Button onClick={onTogglePause} disabled={isLoading || isReadOnly}>
+          {selectedUpsell.paused ? "Resume upsell" : "Pause upsell"}
+        </Button>
       </section>
       {selectedUpsell.cross_sell ? (
         <section className="stack">
@@ -453,7 +491,7 @@ const UpsellDrawer = ({
           ))}
         </section>
       )}
-      <section className="grid auto-cols-fr grid-flow-col gap-4">
+      <section className="override grid auto-cols-fr grid-flow-row gap-4 sm:grid-flow-col">
         <Button onClick={onCreate} disabled={isLoading || isReadOnly}>
           Duplicate
         </Button>
@@ -484,10 +522,11 @@ const Form = ({
   isLoading: boolean;
 }) => {
   const uid = React.useId();
-
+  const { showAlert } = useClientAlert();
   const [name, setName] = React.useState<{ value: string; error?: boolean }>({ value: upsell?.name ?? "" });
   const [offerText, setOfferText] = React.useState<{ value: string; error?: boolean }>({ value: upsell?.text ?? "" });
   const [offerDescription, setOfferDescription] = React.useState(upsell?.description ?? "");
+  const [paused, setPaused] = React.useState(upsell?.paused ?? false);
 
   const [cartItems, setCartItems] = React.useState<Record<string, ProductToAdd>>({});
 
@@ -607,6 +646,7 @@ const Form = ({
           : null,
       productIds: isCrossSell ? selectedProductIds.value : [],
       upsellVariants: !isCrossSell ? variants : [],
+      paused,
     });
   };
 
@@ -635,6 +675,8 @@ const Form = ({
   useLoadCartItem(offeredProductId.value);
   useLoadCartItem(selectedProductIds.value[0] ?? null);
 
+  const handlePausedChange = (evt: React.ChangeEvent<HTMLInputElement>) => setPaused(evt.target.value === "true");
+
   return (
     <>
       <PageHeader
@@ -654,7 +696,7 @@ const Form = ({
       />
       <div className="squished fixed-aside flex-1 lg:grid lg:grid-cols-[1fr_30vw]">
         <form>
-          <section className="!p-8">
+          <section className="p-8!">
             <p>
               When a customer clicks "Pay", offer a version upgrade or another product with or without a discount.{" "}
               <a href="/help/article/331-creating-upsells" target="_blank" rel="noreferrer">
@@ -697,6 +739,18 @@ const Form = ({
                 value={offerDescription}
                 onChange={(evt) => setOfferDescription(evt.target.value)}
               />
+            </fieldset>
+            <fieldset>
+              <legend>Status</legend>
+              <label>
+                <input type="radio" name="paused" value="false" checked={!paused} onChange={handlePausedChange} />
+                Live
+              </label>
+              <label>
+                <input type="radio" name="paused" value="true" checked={paused} onChange={handlePausedChange} />
+                Paused
+              </label>
+              <small>Paused upsells will not appear at checkout. You can resume anytime.</small>
             </fieldset>
             <fieldset>
               <legend>Type of offer</legend>
@@ -840,7 +894,7 @@ const Form = ({
                   />
                 </fieldset>
                 {selectedProduct ? (
-                  <div className="grid grid-cols-[1fr_auto_1fr] gap-2" aria-label="Upsell versions">
+                  <div className="override grid grid-cols-[1fr_auto_1fr] gap-2" aria-label="Upsell versions">
                     <b>Version selected</b>
                     <div />
                     <b>Version to offer</b>
@@ -958,4 +1012,4 @@ const Form = ({
   );
 };
 
-export default register({ component: UpsellsPage, propParser: createCast() });
+export default UpsellsPage;
